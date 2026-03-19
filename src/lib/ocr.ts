@@ -1,38 +1,33 @@
 /**
- * Client-side OCR for extracting card names from deck screenshots.
- * Uses Tesseract.js (dynamically imported to avoid bloating the bundle).
- *
- * Strategy: Run OCR → clean up artifacts → return raw text.
- * The existing parser (parser.ts) handles turning it into a ParsedDeck.
+ * Extract a decklist from a deck screenshot using Claude Vision API.
+ * Calls the /api/ocr server route which handles the Anthropic API call.
  */
-
 export async function extractDecklistFromImage(
-  imageData: string, // base64 data URL
+  imageData: string,
   onProgress?: (progress: number) => void
 ): Promise<string> {
-  const { createWorker } = await import('tesseract.js');
+  // Show indeterminate progress
+  onProgress?.(10);
 
-  const worker = await createWorker('eng', 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && onProgress) {
-        onProgress(Math.round(m.progress * 100));
-      }
-    },
+  const response = await fetch("/api/ocr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: imageData }),
   });
 
-  try {
-    const { data: { text } } = await worker.recognize(imageData);
+  onProgress?.(80);
 
-    // Clean up common OCR artifacts from card screenshots
-    const cleaned = text
-      .replace(/[|]/g, '')             // pipe chars from card borders
-      .replace(/[{}]/g, '')            // curly braces from mana symbols
-      .replace(/\s{3,}/g, '\n')        // large whitespace gaps → newlines
-      .replace(/[^\x20-\x7E\n]/g, '')  // remove non-ASCII except newlines
-      .trim();
-
-    return cleaned;
-  } finally {
-    await worker.terminate();
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: "OCR request failed" }));
+    throw new Error(data.error || `OCR failed with status ${response.status}`);
   }
+
+  const data = await response.json();
+  onProgress?.(100);
+
+  if (!data.decklist || data.decklist.trim().length === 0) {
+    throw new Error("Could not extract any card names from the image. Try a clearer screenshot.");
+  }
+
+  return data.decklist;
 }

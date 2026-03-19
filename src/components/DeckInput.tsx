@@ -134,7 +134,7 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
 
       const lines = extracted.split("\n").filter((l) => l.trim());
       setText(extracted);
-      setOcrMessage(`OCR extracted ${lines.length} lines. Review and edit before submitting.`);
+      setOcrMessage(`Extracted ${lines.length} lines from image. Review and edit before submitting.`);
     } catch {
       setOcrError("Could not read image. Try a clearer screenshot.");
     } finally {
@@ -235,7 +235,7 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
 
         {isProcessingOcr ? (
           <div className="space-y-2">
-            <p className="text-sm text-gray-300">Processing image... {ocrProgress}%</p>
+            <p className="text-sm text-gray-300">Analyzing image... {ocrProgress}%</p>
             <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
               <div
                 className="bg-amber-500 h-2 rounded-full transition-all duration-300"
