@@ -212,15 +212,12 @@ export default function Home() {
             <LegalityBadges entries={[...mainboard, ...sideboard]} />
           </div>
 
-          {/* Mainboard */}
-          <DeckViewer entries={mainboard} deckName={deckName} section="Mainboard" />
-
-          {/* Sideboard */}
-          {sideboard.length > 0 && (
-            <div className="border-t border-gray-800 pt-4">
-              <DeckViewer entries={sideboard} section="Sideboard" />
-            </div>
-          )}
+          {/* Deck — mainboard + sideboard in one layout */}
+          <DeckViewer
+            entries={mainboard}
+            sideboardEntries={sideboard}
+            deckName={deckName}
+          />
         </div>
       )}
     </main>

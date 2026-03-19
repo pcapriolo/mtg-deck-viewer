@@ -4,171 +4,269 @@ import { useMemo } from "react";
 import {
   ScryfallCard,
   categorizeCard,
-  categoryOrder,
   cardImageUri,
   CardCategory,
   COLOR_MAP,
 } from "@/lib/scryfall";
 import { ResolvedEntry } from "@/lib/types";
 import CardHover from "./CardHover";
-import ManaCurve from "./ManaCurve";
 
 interface DeckViewerProps {
   entries: ResolvedEntry[];
+  sideboardEntries?: ResolvedEntry[];
   deckName?: string;
   section?: string;
 }
 
-/**
- * Visual deck viewer — cards displayed as stacked images in a grid.
+/* ────────────────────────────────────────────
+ * Layout reference (what we're building):
  *
- * Layout:
- *   ┌──────────────────────────────────────────┐
- *   │  CREATURE (16)                            │
- *   │  [card][card][card][card][card]...        │
- *   │  INSTANT (14)                             │
- *   │  [card][card][card][card]...              │
- *   │  LAND (20)                                │
- *   │  [card][card][card][card][card]...        │
- *   └──────────────────────────────────────────┘
- *
- * Each [card] is a stack of N copies, overlapping vertically.
- */
-export default function DeckViewer({ entries, deckName, section = "Mainboard" }: DeckViewerProps) {
+ *  ┌─────────────────────────────────────────────────────────┬──────────┐
+ *  │  Deck Name                                              │          │
+ *  │  Format · $XXX · Color bar · Type counts · Mana curve   │          │
+ *  ├─────────────────────────────────────────────────────────┤ SIDEBOARD│
+ *  │  [creature stacks in a row ...]                         │ [stacks] │
+ *  │  [spell + land stacks in a row ...]                     │          │
+ *  └─────────────────────────────────────────────────────────┴──────────┘
+ * ──────────────────────────────────────────── */
+
+const CARD_W = 170;
+const CARD_H = 237; // MTG ratio ~1.395
+const STACK_PEEK = 24; // only the name bar peeks out
+
+const CREATURE_CATS: CardCategory[] = ["Creature", "Planeswalker"];
+const SPELL_CATS: CardCategory[] = ["Instant", "Sorcery", "Enchantment", "Artifact", "Other"];
+const LAND_CATS: CardCategory[] = ["Land"];
+
+// Type symbols (unicode approximations)
+const TYPE_ICONS: Partial<Record<CardCategory, string>> = {
+  Creature: "👾",
+  Planeswalker: "🌟",
+  Instant: "⚡",
+  Sorcery: "🔮",
+  Enchantment: "✨",
+  Artifact: "⚙️",
+  Land: "🏔️",
+};
+
+export default function DeckViewer({
+  entries,
+  sideboardEntries = [],
+  deckName,
+}: DeckViewerProps) {
+  // Group mainboard cards by category, sorted by CMC within each
   const grouped = useMemo(() => {
     const groups = new Map<CardCategory, ResolvedEntry[]>();
-
-    const sorted = [...entries].sort((a, b) => {
-      const catDiff = categoryOrder(categorizeCard(a.card)) - categoryOrder(categorizeCard(b.card));
-      if (catDiff !== 0) return catDiff;
-      return a.card.cmc - b.card.cmc;
-    });
-
+    const sorted = [...entries].sort((a, b) => a.card.cmc - b.card.cmc);
     for (const entry of sorted) {
       const cat = categorizeCard(entry.card);
       const list = groups.get(cat) ?? [];
       list.push(entry);
       groups.set(cat, list);
     }
-
     return groups;
   }, [entries]);
 
+  // Split into two rows: creatures + non-creatures
+  const creatureRow = useMemo(() => {
+    const result: ResolvedEntry[] = [];
+    for (const cat of CREATURE_CATS) {
+      const items = grouped.get(cat);
+      if (items) result.push(...items);
+    }
+    return result;
+  }, [grouped]);
+
+  const spellRow = useMemo(() => {
+    const result: ResolvedEntry[] = [];
+    for (const cat of [...SPELL_CATS, ...LAND_CATS]) {
+      const items = grouped.get(cat);
+      if (items) result.push(...items);
+    }
+    return result;
+  }, [grouped]);
+
+  // Stats
   const totalCards = entries.reduce((sum, e) => sum + e.entry.quantity, 0);
 
   const colorIdentity = useMemo(() => {
     const colors = new Set<string>();
     for (const { card } of entries) {
-      for (const c of card.color_identity) {
-        colors.add(c);
-      }
+      for (const c of card.color_identity) colors.add(c);
     }
     return Array.from(colors);
   }, [entries]);
 
-  const curveData = useMemo(
-    () => entries.map(({ card, entry }) => ({ card, quantity: entry.quantity })),
-    [entries]
+  const typeCounts = useMemo(() => {
+    const counts = new Map<CardCategory, number>();
+    for (const { entry, card } of entries) {
+      const cat = categorizeCard(card);
+      counts.set(cat, (counts.get(cat) ?? 0) + entry.quantity);
+    }
+    return counts;
+  }, [entries]);
+
+  // Mana curve data (non-lands)
+  const curveBuckets = useMemo(() => {
+    const buckets = new Array(8).fill(0);
+    for (const { card, entry } of entries) {
+      if (card.type_line.toLowerCase().includes("land")) continue;
+      const mv = Math.min(Math.floor(card.cmc), 7);
+      buckets[mv] += entry.quantity;
+    }
+    return buckets;
+  }, [entries]);
+  const curveMax = Math.max(...curveBuckets, 1);
+
+  const sideboardTotal = sideboardEntries.reduce((sum, e) => sum + e.entry.quantity, 0);
+
+  // Sort sideboard by CMC
+  const sortedSideboard = useMemo(
+    () => [...sideboardEntries].sort((a, b) => a.card.cmc - b.card.cmc),
+    [sideboardEntries]
   );
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          {deckName && <h2 className="text-lg font-semibold text-white">{deckName}</h2>}
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span>{section}</span>
-            <span>·</span>
-            <span>{totalCards} cards</span>
-            {colorIdentity.length > 0 && (
-              <>
-                <span>·</span>
-                <div className="flex gap-0.5">
-                  {colorIdentity.map((c) => (
-                    <span
-                      key={c}
-                      className="w-4 h-4 rounded-full border border-gray-600"
-                      style={{ backgroundColor: COLOR_MAP[c]?.hex ?? "#888" }}
-                      title={COLOR_MAP[c]?.name ?? c}
-                    />
-                  ))}
+    <div className="space-y-0">
+      {/* ── Header ────────────────────────────────── */}
+      <div className="bg-gray-900/80 border border-gray-700/50 rounded-t-xl px-5 py-4">
+        {/* Deck name */}
+        {deckName && (
+          <h2 className="text-2xl font-bold text-white mb-1">{deckName}</h2>
+        )}
+
+        {/* Stats row */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* Color identity bar */}
+          {colorIdentity.length > 0 && (
+            <div className="flex gap-1">
+              {colorIdentity.map((c) => (
+                <span
+                  key={c}
+                  className="w-5 h-5 rounded-full border-2 border-gray-600"
+                  style={{ backgroundColor: COLOR_MAP[c]?.hex ?? "#888" }}
+                  title={COLOR_MAP[c]?.name ?? c}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Card count */}
+          <span className="text-sm text-gray-400 font-medium">{totalCards} cards</span>
+
+          {/* Type breakdown */}
+          <div className="flex items-center gap-3 text-xs text-gray-400">
+            {Array.from(typeCounts.entries()).map(([cat, count]) => (
+              <span key={cat} className="flex items-center gap-1" title={cat}>
+                <span className="text-sm">{TYPE_ICONS[cat] ?? "•"}</span>
+                <span className="font-medium">{count}</span>
+              </span>
+            ))}
+          </div>
+
+          {/* Inline mana curve */}
+          <div className="flex items-end gap-[3px] h-8 ml-auto">
+            {curveBuckets.map((count, mv) => {
+              const h = count > 0 ? Math.max(3, (count / curveMax) * 28) : 0;
+              return (
+                <div key={mv} className="flex flex-col items-center w-4">
+                  {count > 0 && (
+                    <span className="text-[9px] text-gray-400 leading-none mb-0.5">{count}</span>
+                  )}
+                  <div
+                    className="w-3 bg-amber-500/80 rounded-sm"
+                    style={{ height: h }}
+                  />
+                  <span className="text-[8px] text-gray-500 leading-none mt-0.5">
+                    {mv === 7 ? "7+" : mv}
+                  </span>
                 </div>
-              </>
-            )}
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Card grid — stacked card images by category */}
-      <div className="space-y-1">
-        {Array.from(grouped.entries()).map(([category, items]) => {
-          const count = items.reduce((sum, e) => sum + e.entry.quantity, 0);
-          return (
-            <div key={category}>
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-0.5 px-0.5">
-                {category} ({count})
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {items.map(({ entry, card }) => (
-                  <CardStack
-                    key={card.id + entry.section}
-                    card={card}
-                    quantity={entry.quantity}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Mana Curve */}
-      <div className="border-t border-gray-800 pt-3">
-        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-2">
-          Mana Curve
+      {/* ── Card grid + Sideboard ─────────────────── */}
+      <div className="flex border border-t-0 border-gray-700/50 rounded-b-xl overflow-hidden bg-gray-950/50">
+        {/* Mainboard */}
+        <div className="flex-1 p-3 space-y-2 min-w-0">
+          {/* Row 1: Creatures */}
+          {creatureRow.length > 0 && (
+            <CardRow cards={creatureRow} />
+          )}
+          {/* Row 2: Spells + Lands */}
+          {spellRow.length > 0 && (
+            <CardRow cards={spellRow} />
+          )}
         </div>
-        <ManaCurve cards={curveData} />
+
+        {/* Sideboard */}
+        {sideboardEntries.length > 0 && (
+          <div className="relative border-l border-gray-700/50 bg-gray-900/30 p-3 flex flex-col" style={{ width: CARD_W + 24 }}>
+            {/* Vertical "SIDEBOARD" label */}
+            <div className="absolute -left-3 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-500 whitespace-nowrap pointer-events-none select-none">
+              Sideboard · {sideboardTotal}
+            </div>
+            <div className="ml-2 space-y-0.5">
+              {sortedSideboard.map(({ entry, card }) => (
+                <CardStack key={card.id + "sb"} card={card} quantity={entry.quantity} compact />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/**
- * A stack of N copies of the same card, overlapping vertically.
- * The bottom card is fully visible; copies above peek out by STACK_OFFSET px.
- *
- *   ┌──────────┐  ← copy 1 (only top sliver visible)
- *   │  ┌──────────┐  ← copy 2
- *   │  │  ┌──────────┐  ← copy 3
- *   │  │  │          │
- *   │  │  │  (full)  │  ← last copy fully visible
- *   │  │  │          │
- *   └  └  └──────────┘
- */
-const CARD_WIDTH = 130;
-const CARD_HEIGHT = 182; // ~1.4:1 MTG card ratio
-const STACK_OFFSET = 26; // px between stacked copies
+/** A horizontal row of card stacks */
+function CardRow({ cards }: { cards: ResolvedEntry[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {cards.map(({ entry, card }) => (
+        <CardStack key={card.id + entry.section} card={card} quantity={entry.quantity} />
+      ))}
+    </div>
+  );
+}
 
-function CardStack({ card, quantity }: { card: ScryfallCard; quantity: number }) {
+/**
+ * A stack of N copies — only the name bar peeks out for copies above the last.
+ */
+function CardStack({
+  card,
+  quantity,
+  compact = false,
+}: {
+  card: ScryfallCard;
+  quantity: number;
+  compact?: boolean;
+}) {
   const imageUrl = cardImageUri(card, "normal");
-  const stackHeight = CARD_HEIGHT + (quantity - 1) * STACK_OFFSET;
+  const w = compact ? 140 : CARD_W;
+  const h = compact ? 195 : CARD_H;
+  const peek = compact ? 20 : STACK_PEEK;
+  const stackHeight = h + (quantity - 1) * peek;
 
   return (
     <CardHover card={card} quantity={quantity}>
       <div
         className="relative shrink-0 cursor-pointer"
-        style={{ width: CARD_WIDTH, height: stackHeight }}
+        style={{ width: w, height: stackHeight }}
       >
         {Array.from({ length: quantity }).map((_, i) => (
           <div
             key={i}
-            className="absolute left-0 rounded-[6px] overflow-hidden shadow-md border border-gray-700/50"
+            className="absolute left-0 rounded-[8px] overflow-hidden"
             style={{
-              top: i * STACK_OFFSET,
-              width: CARD_WIDTH,
-              height: CARD_HEIGHT,
+              top: i * peek,
+              width: w,
+              height: h,
               zIndex: i,
+              boxShadow: i < quantity - 1
+                ? "0 1px 2px rgba(0,0,0,0.4)"
+                : "0 4px 12px rgba(0,0,0,0.5)",
             }}
           >
             {imageUrl ? (
@@ -179,7 +277,7 @@ function CardStack({ card, quantity }: { card: ScryfallCard; quantity: number })
                 loading="lazy"
               />
             ) : (
-              <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500 text-xs p-2 text-center">
+              <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500 text-[10px] p-1 text-center leading-tight">
                 {card.name}
               </div>
             )}
@@ -188,7 +286,8 @@ function CardStack({ card, quantity }: { card: ScryfallCard; quantity: number })
         {/* Quantity badge */}
         {quantity > 1 && (
           <div
-            className="absolute top-1 left-1 z-50 bg-black/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-gray-600"
+            className="absolute top-0.5 right-1 z-50 bg-black/70 text-white text-[10px] font-bold rounded-full w-[18px] h-[18px] flex items-center justify-center backdrop-blur-sm"
+            style={{ zIndex: quantity + 1 }}
           >
             {quantity}
           </div>
@@ -198,9 +297,6 @@ function CardStack({ card, quantity }: { card: ScryfallCard; quantity: number })
   );
 }
 
-/**
- * Simplify mana cost string: {2}{U}{U} → 2UU
- */
 export function formatManaCost(cost: string): string {
   return cost.replace(/\{([^}]+)\}/g, (_, symbol) => {
     if (symbol === "X") return "X";

@@ -44,15 +44,8 @@ export default function SharedDeckView({
         </div>
       </div>
 
-      {/* Mainboard */}
-      <DeckViewer entries={mainboard} deckName={deckName} section="Mainboard" />
-
-      {/* Sideboard */}
-      {sideboard.length > 0 && (
-        <div className="border-t border-gray-800 pt-4 mt-6">
-          <DeckViewer entries={sideboard} section="Sideboard" />
-        </div>
-      )}
+      {/* Deck — mainboard + sideboard */}
+      <DeckViewer entries={mainboard} sideboardEntries={sideboard} deckName={deckName} />
 
       {/* Footer: price, legality, export */}
       <div className="border-t border-gray-800 pt-4 mt-6 space-y-3">
