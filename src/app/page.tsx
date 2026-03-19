@@ -20,6 +20,7 @@ export default function Home() {
   const [mainboard, setMainboard] = useState<ResolvedEntry[]>([]);
   const [sideboard, setSideboard] = useState<ResolvedEntry[]>([]);
   const [deckName, setDeckName] = useState<string | undefined>();
+  const [deckAuthor, setDeckAuthor] = useState<string | undefined>();
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -28,6 +29,7 @@ export default function Home() {
     setSideboard([]);
     setShareUrl(null);
     setDeckName(undefined);
+    setDeckAuthor(undefined);
     setWarning(null);
     setError(null);
   }, []);
@@ -74,6 +76,7 @@ export default function Home() {
       }
 
       setDeckName(deck.name);
+      setDeckAuthor(deck.author);
 
       // Fetch all unique cards from Scryfall
       const uniqueCards = new Map<string, { name: string; set?: string }>();
@@ -217,6 +220,7 @@ export default function Home() {
             entries={mainboard}
             sideboardEntries={sideboard}
             deckName={deckName}
+            deckAuthor={deckAuthor}
           />
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ScryfallCard,
   categorizeCard,
@@ -15,7 +15,7 @@ interface DeckViewerProps {
   entries: ResolvedEntry[];
   sideboardEntries?: ResolvedEntry[];
   deckName?: string;
-  section?: string;
+  deckAuthor?: string;
 }
 
 /* ────────────────────────────────────────────
@@ -53,7 +53,12 @@ export default function DeckViewer({
   entries,
   sideboardEntries = [],
   deckName,
+  deckAuthor,
 }: DeckViewerProps) {
+  const [editName, setEditName] = useState(deckName ?? "");
+  const [editAuthor, setEditAuthor] = useState(deckAuthor ?? "");
+  const [editingName, setEditingName] = useState(false);
+  const [editingAuthor, setEditingAuthor] = useState(false);
   // Group mainboard cards by category, sorted by CMC within each
   const grouped = useMemo(() => {
     const groups = new Map<CardCategory, ResolvedEntry[]>();
@@ -130,10 +135,49 @@ export default function DeckViewer({
     <div className="space-y-0">
       {/* ── Header ────────────────────────────────── */}
       <div className="bg-gray-900/80 border border-gray-700/50 rounded-t-xl px-5 py-4">
-        {/* Deck name */}
-        {deckName && (
-          <h2 className="text-2xl font-bold text-white mb-1">{deckName}</h2>
-        )}
+        {/* Editable deck name */}
+        <div className="flex items-baseline gap-3 mb-1">
+          {editingName ? (
+            <input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={() => setEditingName(false)}
+              onKeyDown={(e) => { if (e.key === "Enter") setEditingName(false); }}
+              placeholder="Deck name"
+              className="text-2xl font-bold text-white bg-transparent border-b border-amber-500/50 outline-none w-full max-w-md"
+            />
+          ) : (
+            <h2
+              onClick={() => setEditingName(true)}
+              className="text-2xl font-bold text-white cursor-pointer hover:text-amber-400 transition-colors"
+              title="Click to edit deck name"
+            >
+              {editName || "Untitled Deck"}
+            </h2>
+          )}
+
+          {/* Editable author */}
+          {editingAuthor ? (
+            <input
+              autoFocus
+              value={editAuthor}
+              onChange={(e) => setEditAuthor(e.target.value)}
+              onBlur={() => setEditingAuthor(false)}
+              onKeyDown={(e) => { if (e.key === "Enter") setEditingAuthor(false); }}
+              placeholder="Author"
+              className="text-sm text-gray-400 bg-transparent border-b border-amber-500/50 outline-none w-40"
+            />
+          ) : (
+            <span
+              onClick={() => setEditingAuthor(true)}
+              className="text-sm text-gray-500 cursor-pointer hover:text-gray-300 transition-colors"
+              title="Click to edit author"
+            >
+              {editAuthor || "Add author"}
+            </span>
+          )}
+        </div>
 
         {/* Stats row */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">

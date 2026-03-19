@@ -23,6 +23,7 @@ export interface DeckEntry {
 export interface ParsedDeck {
   entries: DeckEntry[];
   name?: string;
+  author?: string;
 }
 
 const SECTION_HEADERS: Record<string, DeckSection> = {
@@ -46,6 +47,15 @@ const ARENA_SET_PATTERN = /\(([A-Z0-9]+)\)\s+(\d+[a-z]?)$/;
 // Matches MTGO sideboard prefix: "SB: 2 Card Name"
 const MTGO_SB_PATTERN = /^SB:\s*/i;
 
+// Matches "Name: Deck Name" or "Name Deck Name" (common in deck export sites)
+const NAME_PATTERN = /^name[:\s]+(.+)$/i;
+
+// Matches "Author: Name" or "By Name" or "Player: Name"
+const AUTHOR_PATTERN = /^(?:author|by|player)[:\s]+(.+)$/i;
+
+// Lines to skip — common metadata headers that aren't card names or section headers
+const SKIP_WORDS = new Set(["about", "format", "date", "event", "source", "url", "link", "description"]);
+
 function detectSection(line: string): DeckSection | null {
   const cleaned = line.toLowerCase().replace(/[:\s]/g, "");
   return SECTION_HEADERS[cleaned] ?? null;
@@ -55,6 +65,7 @@ export function parseDeckList(input: string): ParsedDeck {
   const lines = input.split(/\r?\n/);
   let currentSection: DeckSection = "mainboard";
   let deckName: string | undefined;
+  let author: string | undefined;
   const entries: DeckEntry[] = [];
   let seenCards = false;
 
@@ -76,6 +87,25 @@ export function parseDeckList(input: string): ParsedDeck {
       continue;
     }
 
+    // Check for "Name: Deck Name" pattern
+    const nameMatch = line.match(NAME_PATTERN);
+    if (nameMatch && !seenCards) {
+      deckName = nameMatch[1].trim();
+      continue;
+    }
+
+    // Check for "Author: Name" / "By Name" pattern
+    const authorMatch = line.match(AUTHOR_PATTERN);
+    if (authorMatch && !seenCards) {
+      author = authorMatch[1].trim();
+      continue;
+    }
+
+    // Skip common metadata words (e.g. "About", "Format", "Date")
+    if (!seenCards && SKIP_WORDS.has(line.toLowerCase().replace(/[:\s]/g, ""))) {
+      continue;
+    }
+
     // Check for MTGO sideboard prefix
     let workingLine = line;
     let lineSection = currentSection;
@@ -87,7 +117,7 @@ export function parseDeckList(input: string): ParsedDeck {
     // Try to match a card line
     const match = workingLine.match(LINE_PATTERN);
     if (!match) {
-      // Could be a deck name if we haven't seen cards yet
+      // Could be a deck name if we haven't seen cards yet and no name set
       if (!seenCards && !deckName && line.length > 0 && !/^\d/.test(line)) {
         deckName = line;
       }
@@ -111,7 +141,7 @@ export function parseDeckList(input: string): ParsedDeck {
     seenCards = true;
   }
 
-  return { entries, name: deckName };
+  return { entries, name: deckName, author };
 }
 
 export function mainboardEntries(deck: ParsedDeck): DeckEntry[] {
