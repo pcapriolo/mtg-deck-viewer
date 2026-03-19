@@ -41,10 +41,26 @@ function looksLikeDecklist(text: string): boolean {
   return matches.length >= 2;
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
   const [text, setText] = useState("");
   const [pastePrompt, setPastePrompt] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<number | null>(null);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isProcessingOcr = ocrProgress !== null;
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -64,6 +80,8 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
   const handleSubmit = useCallback(() => {
     if (text.trim()) {
       clearPrompt();
+      setOcrMessage(null);
+      setOcrError(null);
       onSubmit(text.trim(), "text");
     }
   }, [text, onSubmit, clearPrompt]);
@@ -80,7 +98,6 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setText(e.target.value);
-      // Dismiss paste prompt if user types more
       if (pastePrompt) {
         clearPrompt();
       }
@@ -93,7 +110,6 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
       const pasted = e.clipboardData.getData("text/plain");
       if (pasted && looksLikeDecklist(pasted)) {
         setPastePrompt(true);
-        // Auto-dismiss after 5 seconds
         if (dismissTimer.current) clearTimeout(dismissTimer.current);
         dismissTimer.current = setTimeout(() => {
           setPastePrompt(false);
@@ -104,9 +120,62 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
     []
   );
 
+  const processImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+
+    setOcrError(null);
+    setOcrMessage(null);
+    setOcrProgress(0);
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const { extractDecklistFromImage } = await import("@/lib/ocr");
+      const extracted = await extractDecklistFromImage(dataUrl, setOcrProgress);
+
+      const lines = extracted.split("\n").filter((l) => l.trim());
+      setText(extracted);
+      setOcrMessage(`OCR extracted ${lines.length} lines. Review and edit before submitting.`);
+    } catch {
+      setOcrError("Could not read image. Try a clearer screenshot.");
+    } finally {
+      setOcrProgress(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) processImage(file);
+    },
+    [processImage]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) processImage(file);
+      // Reset so the same file can be selected again
+      e.target.value = "";
+    },
+    [processImage]
+  );
+
   const loadSample = useCallback(() => {
     setText(SAMPLE_DECK);
     clearPrompt();
+    setOcrMessage(null);
+    setOcrError(null);
   }, [clearPrompt]);
 
   return (
@@ -144,10 +213,62 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
         )}
       </div>
 
+      {/* Image drop zone */}
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={() => !isProcessingOcr && fileInputRef.current?.click()}
+        className={`border-2 border-dashed rounded-lg px-4 py-6 text-center cursor-pointer transition-colors ${
+          dragOver
+            ? "border-amber-500 bg-amber-500/10"
+            : "border-gray-700 hover:border-gray-500"
+        } ${isProcessingOcr ? "pointer-events-none opacity-60" : ""}`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {isProcessingOcr ? (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-300">Processing image... {ocrProgress}%</p>
+            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-amber-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${ocrProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">
+            Drop a deck screenshot or{" "}
+            <span className="text-amber-500 underline">browse</span>
+          </p>
+        )}
+      </div>
+
+      {/* OCR result message */}
+      {ocrMessage && (
+        <div className="p-3 bg-green-900/20 border border-green-800/40 rounded-lg text-sm text-green-300">
+          {ocrMessage}
+        </div>
+      )}
+
+      {/* OCR error */}
+      {ocrError && (
+        <div className="p-3 bg-red-900/20 border border-red-800/40 rounded-lg text-sm text-red-300">
+          {ocrError}
+        </div>
+      )}
+
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={loading || !text.trim()}
+        disabled={loading || isProcessingOcr || !text.trim()}
         className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
       >
         {loading ? "Loading cards..." : "View Deck"}

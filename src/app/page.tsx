@@ -43,7 +43,7 @@ export default function Home() {
     return () => window.removeEventListener("popstate", onPopState);
   }, [resetToInput]);
 
-  const handleSubmit = useCallback(async (input: string, type: "text" | "image") => {
+  const handleSubmit = useCallback(async (input: string, type: "text") => {
     setLoading(true);
     setError(null);
     setWarning(null);
@@ -52,14 +52,7 @@ export default function Home() {
     setShareUrl(null);
 
     try {
-      let deckText = input;
-
-      // If image, we'd OCR it here. For MVP, show a message.
-      if (type === "image") {
-        setError("Image parsing coming soon. Paste a text decklist for now.");
-        setLoading(false);
-        return;
-      }
+      const deckText = input;
 
       // Input length validation
       if (deckText.length > MAX_INPUT_LENGTH) {
