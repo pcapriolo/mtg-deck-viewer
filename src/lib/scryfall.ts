@@ -1,8 +1,8 @@
 /**
- * Scryfall API client with in-memory caching.
+ * Scryfall card types and client-side utility functions.
  *
- * Uses the /cards/collection endpoint for batch lookups (up to 75 cards per request).
- * This is far more efficient than individual card lookups for full decklists.
+ * All API fetching has moved to scryfall-server.ts (Server Action) so that
+ * both client pages and SSR routes share a single cache and rate limiter.
  */
 
 export interface ScryfallCard {
@@ -49,81 +49,6 @@ export interface ScryfallCard {
   };
   legalities: Record<string, string>;
   keywords: string[];
-}
-
-const cache = new Map<string, ScryfallCard>();
-
-function cacheKey(name: string, set?: string): string {
-  const key = name.toLowerCase();
-  return set ? `${key}|${set.toLowerCase()}` : key;
-}
-
-/**
- * Fetch cards from Scryfall using the /cards/collection endpoint.
- * Batches up to 75 identifiers per request (Scryfall's limit).
- */
-export async function fetchCards(
-  identifiers: Array<{ name: string; set?: string }>
-): Promise<Map<string, ScryfallCard>> {
-  const results = new Map<string, ScryfallCard>();
-  const uncached: Array<{ name: string; set?: string }> = [];
-
-  // Check cache first
-  for (const id of identifiers) {
-    const key = cacheKey(id.name, id.set);
-    const cached = cache.get(key);
-    if (cached) {
-      results.set(key, cached);
-    } else {
-      uncached.push(id);
-    }
-  }
-
-  if (uncached.length === 0) return results;
-
-  // Batch into groups of 75
-  const batches: Array<typeof uncached> = [];
-  for (let i = 0; i < uncached.length; i += 75) {
-    batches.push(uncached.slice(i, i + 75));
-  }
-
-  for (const batch of batches) {
-    const body = {
-      identifiers: batch.map((id) =>
-        id.set ? { name: id.name, set: id.set } : { name: id.name }
-      ),
-    };
-
-    const response = await fetch("https://api.scryfall.com/cards/collection", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Scryfall API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    for (const card of data.data as ScryfallCard[]) {
-      const key = cacheKey(card.name);
-      cache.set(key, card);
-      results.set(key, card);
-
-      // Also cache with set for specific lookups
-      const setKey = cacheKey(card.name, card.set);
-      cache.set(setKey, card);
-      results.set(setKey, card);
-    }
-
-    // Respect rate limit between batches
-    if (batches.length > 1) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-
-  return results;
 }
 
 /**
