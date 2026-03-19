@@ -13,58 +13,70 @@ interface CardHoverProps {
  * Wraps any content and shows a large card image on hover (desktop)
  * or on tap (mobile, centered with a dismiss overlay).
  *
- * The popup is just the card image — clean, no redundant text.
- * Price shown as a small overlay badge.
+ * For double-faced cards (transform/modal_dfc), shows a flip button
+ * to toggle between front and back face.
  */
 export default function CardHover({ card, quantity, children }: CardHoverProps) {
   const [visible, setVisible] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
+  const [flipped, setFlipped] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const ref = useRef<HTMLDivElement>(null);
+
+  const isDFC = card.card_faces && card.card_faces.length >= 2 &&
+    card.card_faces[0]?.image_uris && card.card_faces[1]?.image_uris;
 
   const handleMouseEnter = useCallback((e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const popupW = 280;
-    const popupH = 390;
+    const popupH = 420;
     const gap = 16;
 
-    // Position: prefer right, fall back to left
     let x = rect.right + gap;
-    if (x + popupW > vw) {
-      x = rect.left - popupW - gap;
-    }
-    // Clamp to viewport
+    if (x + popupW > vw) x = rect.left - popupW - gap;
     x = Math.max(8, Math.min(x, vw - popupW - 8));
 
-    // Vertical: center on the card row, clamp to viewport
     let y = rect.top + rect.height / 2 - popupH / 2;
     y = Math.max(8, Math.min(y, vh - popupH - 8));
 
     setPosition({ x, y });
     setIsTouch(false);
+    setFlipped(false);
     setVisible(true);
   }, []);
 
   const handleMouseLeave = useCallback(() => {
     if (!isTouch) {
       setVisible(false);
+      setFlipped(false);
     }
   }, [isTouch]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     e.stopPropagation();
     setIsTouch(true);
+    setFlipped(false);
     setVisible(true);
   }, []);
 
   const dismiss = useCallback(() => {
     setVisible(false);
     setIsTouch(false);
+    setFlipped(false);
   }, []);
 
-  const imageUrl = cardImageUri(card, "large");
+  // Determine which image to show
+  let imageUrl: string;
+  if (isDFC && flipped) {
+    imageUrl = card.card_faces![1].image_uris!.large;
+  } else if (isDFC) {
+    imageUrl = card.card_faces![0].image_uris!.large;
+  } else {
+    imageUrl = cardImageUri(card, "large");
+  }
+
   const price = card.prices?.usd ? `$${card.prices.usd}` : null;
 
   return (
@@ -96,7 +108,7 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
           }
         >
           <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-black/60">
-            {/* Card image — the whole popup */}
+            {/* Card image */}
             {imageUrl ? (
               <img
                 src={imageUrl}
@@ -110,14 +122,34 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
               </div>
             )}
 
-            {/* Price badge — floating bottom-right */}
+            {/* Price badge */}
             {price && (
               <div className="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-green-400 text-xs font-medium px-2 py-0.5 rounded-md">
                 {price}
               </div>
             )}
 
-            {/* Quantity badge — floating top-left (only on touch where context is less clear) */}
+            {/* Transform / flip button for DFCs */}
+            {isDFC && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFlipped((f) => !f);
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                }}
+                className="pointer-events-auto absolute bottom-2 left-2 bg-black/75 backdrop-blur-sm text-white text-[11px] font-medium pl-1.5 pr-2.5 py-1 rounded-md hover:bg-black/90 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Flip card"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                  <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm4.5 0a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3zM8 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+                </svg>
+                {flipped ? "Front" : "Transform"}
+              </button>
+            )}
+
+            {/* Quantity badge (touch only) */}
             {isTouch && quantity > 1 && (
               <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-sm text-white text-xs font-bold px-2 py-0.5 rounded-md">
                 ×{quantity}

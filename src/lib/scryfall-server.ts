@@ -220,15 +220,28 @@ export async function fetchCardsAction(
     const cards = (data as { data: ScryfallCard[] }).data;
 
     for (const card of cards) {
-      // Cache by name only
+      // Cache by full name
       const nameKey = cacheKey(card.name);
       cacheSet(nameKey, card);
       results[nameKey] = card;
 
-      // Also cache with set for specific lookups
+      // Cache with set for specific lookups
       const setKey = cacheKey(card.name, card.set);
       cacheSet(setKey, card);
       results[setKey] = card;
+
+      // For double-faced / split cards (name contains " // "),
+      // also cache by each face name so "Esper Origins" finds
+      // "Esper Origins // Summon: Esper Maduin"
+      if (card.name.includes(" // ")) {
+        for (const faceName of card.name.split(" // ")) {
+          const faceKey = cacheKey(faceName.trim());
+          if (!results[faceKey]) {
+            cacheSet(faceKey, card);
+            results[faceKey] = card;
+          }
+        }
+      }
     }
   }
 
