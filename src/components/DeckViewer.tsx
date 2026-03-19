@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Image from "next/image";
 import {
   ScryfallCard,
   categorizeCard,
@@ -9,14 +10,9 @@ import {
   CardCategory,
   COLOR_MAP,
 } from "@/lib/scryfall";
-import { DeckEntry } from "@/lib/parser";
+import { ResolvedEntry } from "@/lib/types";
 import CardHover from "./CardHover";
 import ManaCurve from "./ManaCurve";
-
-interface ResolvedEntry {
-  entry: DeckEntry;
-  card: ScryfallCard;
-}
 
 interface DeckViewerProps {
   entries: ResolvedEntry[];
@@ -135,13 +131,16 @@ function CardRow({ card, quantity }: { card: ScryfallCard; quantity: number }) {
 
         {/* Thumbnail */}
         <div className="w-8 h-6 rounded overflow-hidden bg-gray-800 shrink-0">
-          {imageUrl && (
-            <img
+          {imageUrl ? (
+            <Image
               src={imageUrl}
               alt=""
+              width={32}
+              height={24}
               className="w-full h-full object-cover object-[50%_25%]"
-              loading="lazy"
             />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-600 text-[8px]">?</div>
           )}
         </div>
 

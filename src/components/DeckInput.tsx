@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface DeckInputProps {
-  onSubmit: (input: string, type: "text" | "image") => void;
+  onSubmit: (input: string, type: "text") => void;
   loading: boolean;
 }
 
@@ -33,15 +33,40 @@ Sideboard
 2 Deflecting Palm
 2 Kor Firewalker`;
 
+const DECKLIST_LINE = /^\d+\s*[xX]?\s+\S/;
+
+function looksLikeDecklist(text: string): boolean {
+  const lines = text.split("\n").filter((l) => l.trim());
+  const matches = lines.filter((l) => DECKLIST_LINE.test(l));
+  return matches.length >= 2;
+}
+
 export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
   const [text, setText] = useState("");
-  const [dragOver, setDragOver] = useState(false);
+  const [pastePrompt, setPastePrompt] = useState(false);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    };
+  }, []);
+
+  const clearPrompt = useCallback(() => {
+    setPastePrompt(false);
+    if (dismissTimer.current) {
+      clearTimeout(dismissTimer.current);
+      dismissTimer.current = null;
+    }
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (text.trim()) {
+      clearPrompt();
       onSubmit(text.trim(), "text");
     }
-  }, [text, onSubmit]);
+  }, [text, onSubmit, clearPrompt]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -52,40 +77,37 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
     [handleSubmit]
   );
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-
-      const file = e.dataTransfer.files[0];
-      if (file?.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          onSubmit(reader.result as string, "image");
-        };
-        reader.readAsDataURL(file);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setText(e.target.value);
+      // Dismiss paste prompt if user types more
+      if (pastePrompt) {
+        clearPrompt();
       }
     },
-    [onSubmit]
+    [pastePrompt, clearPrompt]
   );
 
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file?.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          onSubmit(reader.result as string, "image");
-        };
-        reader.readAsDataURL(file);
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const pasted = e.clipboardData.getData("text/plain");
+      if (pasted && looksLikeDecklist(pasted)) {
+        setPastePrompt(true);
+        // Auto-dismiss after 5 seconds
+        if (dismissTimer.current) clearTimeout(dismissTimer.current);
+        dismissTimer.current = setTimeout(() => {
+          setPastePrompt(false);
+          dismissTimer.current = null;
+        }, 5000);
       }
     },
-    [onSubmit]
+    []
   );
 
   const loadSample = useCallback(() => {
     setText(SAMPLE_DECK);
-  }, []);
+    clearPrompt();
+  }, [clearPrompt]);
 
   return (
     <div className="space-y-4">
@@ -102,39 +124,24 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
         </div>
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={`4 Lightning Bolt\n4 Monastery Swiftspear\n2 Eidolon of the Great Revel\n...`}
           className="w-full h-48 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 font-mono resize-none focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
         />
-      </div>
 
-      {/* Image drop zone */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-          dragOver
-            ? "border-amber-500 bg-amber-500/5"
-            : "border-gray-700 hover:border-gray-600"
-        }`}
-      >
-        <p className="text-sm text-gray-400">
-          Drop a decklist screenshot here, or{" "}
-          <label className="text-amber-500 hover:text-amber-400 cursor-pointer">
-            browse
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </label>
-        </p>
+        {pastePrompt && (
+          <div className="mt-2 flex items-center gap-2 text-sm text-gray-300 animate-in fade-in">
+            <span>Looks like a decklist —</span>
+            <button
+              onClick={handleSubmit}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded transition-colors"
+            >
+              View it?
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Submit */}

@@ -11,9 +11,10 @@ import { ResolvedEntry } from "./types";
  * Falls back to "N CardName" if set/collectorNumber are missing.
  * Mainboard cards appear first, then a blank line, then sideboard cards (if any).
  */
-export function exportAsArena(entries: ResolvedEntry[]): string {
-  const mainboard = entries.filter((e) => e.entry.section !== "sideboard");
-  const sideboard = entries.filter((e) => e.entry.section === "sideboard");
+export function exportAsArena(
+  mainboard: ResolvedEntry[],
+  sideboard: ResolvedEntry[] = [],
+): string {
 
   const lines: string[] = [];
 

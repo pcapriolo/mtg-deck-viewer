@@ -10,11 +10,12 @@ interface CardHoverProps {
 }
 
 /**
- * Wraps any content and shows a large card image on hover.
- * Positions the popup to whichever side of the viewport has more space.
+ * Wraps any content and shows a large card image on hover (desktop)
+ * or on tap (mobile, centered on screen with a dismiss overlay).
  */
 export default function CardHover({ card, quantity, children }: CardHoverProps) {
   const [visible, setVisible] = useState(false);
+  const [isTouch, setIsTouch] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number; side: "left" | "right" }>({
     x: 0,
     y: 0,
@@ -33,11 +34,25 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
     const y = Math.max(8, Math.min(rect.top, window.innerHeight - 370));
 
     setPosition({ x, y, side });
+    setIsTouch(false);
     setVisible(true);
   }, []);
 
   const handleMouseLeave = useCallback(() => {
+    if (!isTouch) {
+      setVisible(false);
+    }
+  }, [isTouch]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    setIsTouch(true);
+    setVisible(true);
+  }, []);
+
+  const dismiss = useCallback(() => {
     setVisible(false);
+    setIsTouch(false);
   }, []);
 
   const imageUrl = cardImageUri(card, "normal");
@@ -48,14 +63,27 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
       ref={ref}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleTouchStart}
       className="relative"
     >
       {children}
 
+      {visible && isTouch && (
+        <div
+          className="fixed inset-0 z-40"
+          onTouchStart={dismiss}
+          onClick={dismiss}
+        />
+      )}
+
       {visible && (
         <div
-          className="fixed z-50 pointer-events-none"
-          style={{ left: position.x, top: position.y }}
+          className={`fixed z-50 ${isTouch ? "pointer-events-auto" : "pointer-events-none"}`}
+          style={
+            isTouch
+              ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+              : { left: position.x, top: position.y }
+          }
         >
           <div className="bg-gray-900 rounded-lg shadow-2xl overflow-hidden border border-gray-700">
             {imageUrl && (
