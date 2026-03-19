@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Image from "next/image";
 import {
   ScryfallCard,
   categorizeCard,
@@ -21,7 +20,19 @@ interface DeckViewerProps {
 }
 
 /**
- * The main deck viewer — groups cards by type, shows thumbnails with hover.
+ * Visual deck viewer — cards displayed as stacked images in a grid.
+ *
+ * Layout:
+ *   ┌──────────────────────────────────────────┐
+ *   │  CREATURE (16)                            │
+ *   │  [card][card][card][card][card]...        │
+ *   │  INSTANT (14)                             │
+ *   │  [card][card][card][card]...              │
+ *   │  LAND (20)                                │
+ *   │  [card][card][card][card][card]...        │
+ *   └──────────────────────────────────────────┘
+ *
+ * Each [card] is a stack of N copies, overlapping vertically.
  */
 export default function DeckViewer({ entries, deckName, section = "Mainboard" }: DeckViewerProps) {
   const grouped = useMemo(() => {
@@ -89,18 +100,22 @@ export default function DeckViewer({ entries, deckName, section = "Mainboard" }:
         </div>
       </div>
 
-      {/* Card groups */}
-      <div className="space-y-3">
+      {/* Card grid — stacked card images by category */}
+      <div className="space-y-1">
         {Array.from(grouped.entries()).map(([category, items]) => {
           const count = items.reduce((sum, e) => sum + e.entry.quantity, 0);
           return (
             <div key={category}>
-              <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-0.5 px-0.5">
                 {category} ({count})
               </div>
-              <div className="space-y-px">
+              <div className="flex flex-wrap gap-1">
                 {items.map(({ entry, card }) => (
-                  <CardRow key={card.id + entry.section} card={card} quantity={entry.quantity} />
+                  <CardStack
+                    key={card.id + entry.section}
+                    card={card}
+                    quantity={entry.quantity}
+                  />
                 ))}
               </div>
             </div>
@@ -108,9 +123,9 @@ export default function DeckViewer({ entries, deckName, section = "Mainboard" }:
         })}
       </div>
 
-      {/* Stats */}
+      {/* Mana Curve */}
       <div className="border-t border-gray-800 pt-3">
-        <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-2">
           Mana Curve
         </div>
         <ManaCurve cards={curveData} />
@@ -119,40 +134,65 @@ export default function DeckViewer({ entries, deckName, section = "Mainboard" }:
   );
 }
 
-function CardRow({ card, quantity }: { card: ScryfallCard; quantity: number }) {
-  const imageUrl = cardImageUri(card, "small");
-  const manaCost = card.mana_cost || card.card_faces?.[0]?.mana_cost || "";
+/**
+ * A stack of N copies of the same card, overlapping vertically.
+ * The bottom card is fully visible; copies above peek out by STACK_OFFSET px.
+ *
+ *   ┌──────────┐  ← copy 1 (only top sliver visible)
+ *   │  ┌──────────┐  ← copy 2
+ *   │  │  ┌──────────┐  ← copy 3
+ *   │  │  │          │
+ *   │  │  │  (full)  │  ← last copy fully visible
+ *   │  │  │          │
+ *   └  └  └──────────┘
+ */
+const CARD_WIDTH = 130;
+const CARD_HEIGHT = 182; // ~1.4:1 MTG card ratio
+const STACK_OFFSET = 26; // px between stacked copies
+
+function CardStack({ card, quantity }: { card: ScryfallCard; quantity: number }) {
+  const imageUrl = cardImageUri(card, "normal");
+  const stackHeight = CARD_HEIGHT + (quantity - 1) * STACK_OFFSET;
 
   return (
     <CardHover card={card} quantity={quantity}>
-      <div className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-800/60 transition-colors cursor-default group">
-        {/* Quantity */}
-        <span className="text-sm text-gray-500 w-5 text-right font-mono">{quantity}</span>
-
-        {/* Thumbnail */}
-        <div className="w-8 h-6 rounded overflow-hidden bg-gray-800 shrink-0">
-          {imageUrl ? (
-            <Image
-              src={imageUrl}
-              alt=""
-              width={32}
-              height={24}
-              className="w-full h-full object-cover object-[50%_25%]"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-600 text-[8px]">?</div>
-          )}
-        </div>
-
-        {/* Name */}
-        <span className="text-sm text-gray-200 group-hover:text-white truncate flex-1">
-          {card.name}
-        </span>
-
-        {/* Mana cost symbols (simplified) */}
-        <span className="text-xs text-gray-500 shrink-0 font-mono">
-          {formatManaCost(manaCost)}
-        </span>
+      <div
+        className="relative shrink-0 cursor-pointer"
+        style={{ width: CARD_WIDTH, height: stackHeight }}
+      >
+        {Array.from({ length: quantity }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute left-0 rounded-[6px] overflow-hidden shadow-md border border-gray-700/50"
+            style={{
+              top: i * STACK_OFFSET,
+              width: CARD_WIDTH,
+              height: CARD_HEIGHT,
+              zIndex: i,
+            }}
+          >
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={i === quantity - 1 ? card.name : ""}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500 text-xs p-2 text-center">
+                {card.name}
+              </div>
+            )}
+          </div>
+        ))}
+        {/* Quantity badge */}
+        {quantity > 1 && (
+          <div
+            className="absolute top-1 left-1 z-50 bg-black/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-gray-600"
+          >
+            {quantity}
+          </div>
+        )}
       </div>
     </CardHover>
   );
@@ -161,7 +201,7 @@ function CardRow({ card, quantity }: { card: ScryfallCard; quantity: number }) {
 /**
  * Simplify mana cost string: {2}{U}{U} → 2UU
  */
-function formatManaCost(cost: string): string {
+export function formatManaCost(cost: string): string {
   return cost.replace(/\{([^}]+)\}/g, (_, symbol) => {
     if (symbol === "X") return "X";
     return symbol;

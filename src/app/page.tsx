@@ -151,7 +151,7 @@ export default function Home() {
   const hasResults = mainboard.length > 0 || sideboard.length > 0;
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8">
+    <main className={`mx-auto px-4 py-8 ${hasResults ? "max-w-7xl" : "max-w-2xl"}`}>
       {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold text-white mb-1">MTG Deck Viewer</h1>
