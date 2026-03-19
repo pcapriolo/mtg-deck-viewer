@@ -27,6 +27,8 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
     card.card_faces[0]?.image_uris && card.card_faces[1]?.image_uris;
 
   const handleMouseEnter = useCallback((e: React.MouseEvent) => {
+    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -47,10 +49,15 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
     setVisible(true);
   }, []);
 
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleMouseLeave = useCallback(() => {
     if (!isTouch) {
-      setVisible(false);
-      setFlipped(false);
+      // Small delay so user can move mouse to the popup
+      hideTimer.current = setTimeout(() => {
+        setVisible(false);
+        setFlipped(false);
+      }, 150);
     }
   }, [isTouch]);
 
@@ -100,12 +107,18 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
 
       {visible && (
         <div
-          className={`fixed z-50 ${isTouch ? "pointer-events-auto" : "pointer-events-none"}`}
+          className="fixed z-50 pointer-events-auto"
           style={
             isTouch
               ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
               : { left: position.x, top: position.y }
           }
+          onMouseEnter={() => {
+            if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+          }}
+          onMouseLeave={() => {
+            if (!isTouch) { setVisible(false); setFlipped(false); }
+          }}
         >
           <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-black/60">
             {/* Card image */}

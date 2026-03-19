@@ -34,6 +34,7 @@ const CARD_W = 170;
 const CARD_H = 237; // MTG ratio ~1.395
 const STACK_PEEK = 24; // only the name bar peeks out
 
+const CATEGORY_ORDER: CardCategory[] = ["Creature", "Planeswalker", "Instant", "Sorcery", "Enchantment", "Artifact", "Land", "Other"];
 const CREATURE_CATS: CardCategory[] = ["Creature", "Planeswalker"];
 const SPELL_CATS: CardCategory[] = ["Instant", "Sorcery", "Enchantment", "Artifact", "Other"];
 const LAND_CATS: CardCategory[] = ["Land"];
@@ -125,9 +126,14 @@ export default function DeckViewer({
 
   const sideboardTotal = sideboardEntries.reduce((sum, e) => sum + e.entry.quantity, 0);
 
-  // Sort sideboard by CMC
+  // Sort sideboard by category then CMC (so creatures group together, etc.)
   const sortedSideboard = useMemo(
-    () => [...sideboardEntries].sort((a, b) => a.card.cmc - b.card.cmc),
+    () => [...sideboardEntries].sort((a, b) => {
+      const catA = CATEGORY_ORDER.indexOf(categorizeCard(a.card));
+      const catB = CATEGORY_ORDER.indexOf(categorizeCard(b.card));
+      if (catA !== catB) return catA - catB;
+      return a.card.cmc - b.card.cmc;
+    }),
     [sideboardEntries]
   );
 

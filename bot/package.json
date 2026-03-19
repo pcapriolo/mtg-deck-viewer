@@ -1,0 +1,21 @@
+{
+  "name": "mtg-deck-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx bot.ts",
+    "dev": "tsx watch bot.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "twitter-api-v2": "^1.18.0",
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pako": "^2.0.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}
