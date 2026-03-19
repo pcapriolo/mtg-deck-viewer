@@ -11,29 +11,38 @@ interface CardHoverProps {
 
 /**
  * Wraps any content and shows a large card image on hover (desktop)
- * or on tap (mobile, centered on screen with a dismiss overlay).
+ * or on tap (mobile, centered with a dismiss overlay).
+ *
+ * The popup is just the card image — clean, no redundant text.
+ * Price shown as a small overlay badge.
  */
 export default function CardHover({ card, quantity, children }: CardHoverProps) {
   const [visible, setVisible] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
-  const [position, setPosition] = useState<{ x: number; y: number; side: "left" | "right" }>({
-    x: 0,
-    y: 0,
-    side: "right",
-  });
+  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const ref = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = useCallback((e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const cardWidth = 250;
-    const gap = 12;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const popupW = 280;
+    const popupH = 390;
+    const gap = 16;
 
-    const side = rect.left > viewportWidth / 2 ? "left" : "right";
-    const x = side === "right" ? rect.right + gap : rect.left - cardWidth - gap;
-    const y = Math.max(8, Math.min(rect.top, window.innerHeight - 370));
+    // Position: prefer right, fall back to left
+    let x = rect.right + gap;
+    if (x + popupW > vw) {
+      x = rect.left - popupW - gap;
+    }
+    // Clamp to viewport
+    x = Math.max(8, Math.min(x, vw - popupW - 8));
 
-    setPosition({ x, y, side });
+    // Vertical: center on the card row, clamp to viewport
+    let y = rect.top + rect.height / 2 - popupH / 2;
+    y = Math.max(8, Math.min(y, vh - popupH - 8));
+
+    setPosition({ x, y });
     setIsTouch(false);
     setVisible(true);
   }, []);
@@ -55,7 +64,7 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
     setIsTouch(false);
   }, []);
 
-  const imageUrl = cardImageUri(card, "normal");
+  const imageUrl = cardImageUri(card, "large");
   const price = card.prices?.usd ? `$${card.prices.usd}` : null;
 
   return (
@@ -68,9 +77,10 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
     >
       {children}
 
+      {/* Touch dismiss overlay */}
       {visible && isTouch && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-40 bg-black/60"
           onTouchStart={dismiss}
           onClick={dismiss}
         />
@@ -85,27 +95,34 @@ export default function CardHover({ card, quantity, children }: CardHoverProps) 
               : { left: position.x, top: position.y }
           }
         >
-          <div className="bg-gray-900 rounded-lg shadow-2xl overflow-hidden border border-gray-700">
-            {imageUrl && (
+          <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-black/60">
+            {/* Card image — the whole popup */}
+            {imageUrl ? (
               <img
                 src={imageUrl}
                 alt={card.name}
-                className="w-[250px] rounded-t-lg"
+                className="w-[280px] block rounded-xl"
                 loading="eager"
               />
-            )}
-            <div className="p-2 text-xs text-gray-300 space-y-1">
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-white truncate">{card.name}</span>
-                {price && <span className="text-green-400 ml-2 shrink-0">{price}</span>}
+            ) : (
+              <div className="w-[280px] h-[390px] bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-sm">
+                {card.name}
               </div>
-              <div className="text-gray-400">{card.type_line}</div>
-              {card.oracle_text && (
-                <div className="text-gray-400 line-clamp-3 text-[11px] leading-tight">
-                  {card.oracle_text}
-                </div>
-              )}
-            </div>
+            )}
+
+            {/* Price badge — floating bottom-right */}
+            {price && (
+              <div className="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-green-400 text-xs font-medium px-2 py-0.5 rounded-md">
+                {price}
+              </div>
+            )}
+
+            {/* Quantity badge — floating top-left (only on touch where context is less clear) */}
+            {isTouch && quantity > 1 && (
+              <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-sm text-white text-xs font-bold px-2 py-0.5 rounded-md">
+                ×{quantity}
+              </div>
+            )}
           </div>
         </div>
       )}
