@@ -40,7 +40,8 @@ export function colorsToPips(colors: string[]): string {
 export function deriveDeckStats(
   cards: Record<string, BotScryfallCard>,
   deckText: string,
-  deckName?: string
+  deckName?: string,
+  hallmarkCardName?: string | null
 ): DeckStats {
   const lines = deckText.split("\n");
   const colorSet = new Set<string>();
@@ -88,7 +89,15 @@ export function deriveDeckStats(
   }
 
   const colors = COLOR_ORDER.filter((c) => colorSet.has(c));
-  const topCard = selectTopCard(cards, deckText, deckName);
+
+  // Use hallmark card from reconciliation if available
+  let topCard: BotScryfallCard | undefined;
+  if (hallmarkCardName) {
+    topCard = cards[hallmarkCardName.toLowerCase()];
+  }
+  if (!topCard) {
+    topCard = selectTopCard(cards, deckText, deckName);
+  }
 
   return {
     colors,

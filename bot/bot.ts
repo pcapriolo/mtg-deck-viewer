@@ -28,6 +28,7 @@ import { extractDecklistFromImages } from "./ocr";
 import { encodeDeckUrl, composeReplyText, extractDeckName } from "./encoder";
 import { fetchCards } from "./scryfall";
 import { deriveDeckStats } from "./stats";
+import { reconcileContext } from "./reconcile";
 
 const SINCE_ID_FILE = "./since-id.txt";
 const FRESH_START_WINDOW = 5 * 60 * 1000; // 5 minutes
@@ -123,25 +124,25 @@ async function handleMention(
 ) {
   let decklistText: string | null = null;
 
-  // Step 1: Try text-based decklist detection before image OCR
+  // Step 1: Collect thread context (images + tweet texts)
+  const threadCtx = await collectThreadContext(reader, mention);
+
+  // Step 2: Try text-based decklist detection before image OCR
   const textDecklist = extractDecklistFromText(mention.text);
   if (textDecklist) {
     const lineCount = textDecklist.split("\n").filter((l) => l.trim()).length;
     console.log(`   📝 Found decklist in text: ${lineCount} lines`);
     decklistText = textDecklist;
   } else {
-    // Step 2: Collect images from the mention itself and up the reply chain
-    const images = await collectImages(reader, mention);
-
-    if (images.length === 0) {
+    if (threadCtx.images.length === 0) {
       console.log("   ⚠️  No images or decklist found in thread. Skipping.");
       return;
     }
 
-    console.log(`   🖼️  Found ${images.length} image(s). Running OCR...`);
+    console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
 
     // Step 3: OCR the images
-    decklistText = await extractDecklistFromImages(images);
+    decklistText = await extractDecklistFromImages(threadCtx.images);
 
     if (!decklistText) {
       console.log("   ⚠️  No decklist found in images. Skipping.");
@@ -152,8 +153,8 @@ async function handleMention(
     console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
   }
 
-  // Step 4: Enrich with Scryfall data (colors, types, prices)
-  const deckName = extractDeckName(decklistText);
+  // Step 4: Enrich with Scryfall data
+  const ocrDeckName = extractDeckName(decklistText);
   let replyText: string;
 
   try {
@@ -163,25 +164,58 @@ async function handleMention(
       .filter(Boolean) as string[];
 
     const cards = await fetchCards(cardNames);
-    const stats = deriveDeckStats(cards, decklistText, deckName);
+
+    // Step 5: Reconcile context — combine tweet text + OCR + card list
+    const ocrAuthor = extractAuthor(decklistText);
+    console.log(`   🔍 Reconciling context (${threadCtx.texts.length} tweet(s))...`);
+    const context = await reconcileContext(threadCtx.texts, ocrDeckName ?? null, ocrAuthor, cardNames);
+
+    const finalName = context.deckName ?? ocrDeckName;
+    if (context.deckName && context.deckName !== ocrDeckName) {
+      console.log(`   📛 Reconciled name: "${context.deckName}" (OCR: "${ocrDeckName ?? "none"}")`);
+    }
+    if (context.hallmarkCard) {
+      console.log(`   ⭐ Hallmark card: ${context.hallmarkCard}`);
+    }
+    if (context.author) {
+      console.log(`   👤 Author: ${context.author}`);
+    }
+
+    // Use hallmark card from reconciliation for stats/OG preview
+    const stats = deriveDeckStats(cards, decklistText, finalName, context.hallmarkCard);
 
     console.log(`   🎨 Colors: ${stats.colorPips || "(colorless)"}`);
     console.log(`   📊 ${stats.creatureCount} creatures, ${stats.spellCount} spells, ${stats.landCount} lands`);
 
-    replyText = composeReplyText(stats, deckName);
+    // Inject reconciled name + author into the decklist text for URL encoding
+    if (finalName && !ocrDeckName) {
+      decklistText = `Name: ${finalName}\n${decklistText}`;
+    } else if (finalName && ocrDeckName && finalName !== ocrDeckName) {
+      decklistText = decklistText.replace(/^name[:\s]+.+$/im, `Name: ${finalName}`);
+    }
+    if (context.author && !ocrAuthor) {
+      // Insert author after name line or at top
+      const nameIdx = decklistText.indexOf("\n");
+      if (decklistText.startsWith("Name:") && nameIdx > 0) {
+        decklistText = decklistText.slice(0, nameIdx) + `\nAuthor: ${context.author}` + decklistText.slice(nameIdx);
+      } else {
+        decklistText = `Author: ${context.author}\n${decklistText}`;
+      }
+    }
+
+    replyText = composeReplyText(stats, finalName ?? undefined);
   } catch (err) {
-    console.error("   ⚠️  Scryfall enrichment failed, using basic reply:", err);
-    // Fallback to basic format
+    console.error("   ⚠️  Enrichment failed, using basic reply:", err);
     const mainCount = decklistText
       .split("\n")
       .filter((l) => /^\d+\s/.test(l.trim()))
       .reduce((sum, l) => sum + parseInt(l.match(/^(\d+)/)?.[1] ?? "0"), 0);
-    replyText = deckName
-      ? `${deckName} · ${mainCount} cards\n\n▶ View deck →`
+    replyText = ocrDeckName
+      ? `${ocrDeckName} · ${mainCount} cards\n\n▶ View deck →`
       : `${mainCount}-card deck\n\n▶ View deck →`;
   }
 
-  // Step 5: Generate the deck viewer URL and reply
+  // Step 6: Generate the deck viewer URL and reply
   const deckUrl = encodeDeckUrl(decklistText, DECK_VIEWER_URL);
 
   console.log(`   🔗 ${deckUrl}`);
@@ -189,6 +223,17 @@ async function handleMention(
 
   const replyId = await replyWithLink(writer, mention.id, deckUrl, replyText);
   console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
+}
+
+/**
+ * Extract author from raw decklist text (looks for "Author: X" line).
+ */
+function extractAuthor(text: string): string | null {
+  for (const line of text.split("\n")) {
+    const match = line.match(/^author[:\s]+(.+)$/i);
+    if (match) return match[1].trim();
+  }
+  return null;
 }
 
 /**
@@ -210,15 +255,20 @@ export function extractDecklistFromText(text: string): string | null {
   return deckLines.join("\n");
 }
 
+interface ThreadContext {
+  images: string[];
+  texts: string[];  // tweet texts from the chain (newest first)
+}
+
 /**
- * Walk up the reply chain from a mention to find tweet images.
- * Checks the mention itself first, then its parent, grandparent, etc.
+ * Walk up the reply chain from a mention to collect images AND tweet texts.
  */
-async function collectImages(
+async function collectThreadContext(
   reader: ReturnType<typeof createClient>["reader"],
   mention: MentionTweet
-): Promise<string[]> {
-  const allImages: string[] = [...mention.imageUrls];
+): Promise<ThreadContext> {
+  const images: string[] = [...mention.imageUrls];
+  const texts: string[] = [mention.text];
 
   let currentTweetId = mention.inReplyToId;
   let depth = 0;
@@ -228,7 +278,10 @@ async function collectImages(
     if (!tweet) break;
 
     if (tweet.imageUrls.length > 0) {
-      allImages.push(...tweet.imageUrls);
+      images.push(...tweet.imageUrls);
+    }
+    if (tweet.text.trim()) {
+      texts.push(tweet.text);
     }
 
     currentTweetId = tweet.inReplyToId;
@@ -238,7 +291,7 @@ async function collectImages(
     await sleep(200);
   }
 
-  return allImages;
+  return { images, texts };
 }
 
 function sleep(ms: number): Promise<void> {
