@@ -14,6 +14,8 @@ READING CARD NAMES:
 2. Scan left to right, top to bottom. Do NOT skip any column or any row.
 3. LANDS ARE CARDS TOO — do not skip the land column. Count every land.
 4. SPELLS BETWEEN COLUMNS — cards may appear between creature and land columns. Do not skip them.
+5. Card names may contain SPECIAL CHARACTERS: accents (ó, é, ü, â), commas, apostrophes, hyphens, slashes (//). Include them exactly as written. Examples: "Lórien Revealed", "Séance", "Kess, Dissident Mage".
+6. EVERY card visible in the image must appear in your output. If you can see a card's title bar, it must be listed.
 
 CRITICAL — QUANTITY DEFAULTS TO 1:
 Every card is 1 copy UNLESS you can see one of these:
@@ -71,6 +73,7 @@ CHECK EACH ITEM:
    - Single cards without badges (easy to overlook)
    - The bottom card in each column
    - Lands — count every single one
+   - Cards with special characters in names (accents like ó, é — these are real card names, not OCR errors)
 
 5. CARD COUNT: Sum the mainboard. Does it match the count shown in the image? If not, find the discrepancy.
 
