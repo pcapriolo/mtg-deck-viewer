@@ -113,26 +113,51 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { image } = await request.json();
+    const { image, imageUrl } = await request.json();
 
-    if (!image || typeof image !== "string") {
-      return NextResponse.json({ error: "No image provided" }, { status: 400 });
+    if (!image && !imageUrl) {
+      return NextResponse.json({ error: "No image or imageUrl provided" }, { status: 400 });
     }
 
-    const match = image.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!match) {
-      return NextResponse.json(
-        { error: "Invalid image format. Expected base64 data URL." },
-        { status: 400 }
-      );
-    }
+    // Build the image source for the Anthropic API
+    let imageSource: Anthropic.ImageBlockParam["source"];
 
-    const mediaType = match[1] as
-      | "image/jpeg"
-      | "image/png"
-      | "image/gif"
-      | "image/webp";
-    const base64Data = match[2];
+    if (imageUrl && typeof imageUrl === "string") {
+      // URL mode: fetch the image and convert to base64 (Anthropic API needs base64)
+      const imgResponse = await fetch(imageUrl);
+      if (!imgResponse.ok) {
+        return NextResponse.json(
+          { error: `Failed to fetch image from URL: ${imgResponse.status}` },
+          { status: 400 }
+        );
+      }
+      const contentType = imgResponse.headers.get("content-type") || "image/jpeg";
+      const buffer = await imgResponse.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+      const mediaType = contentType.split(";")[0].trim() as
+        | "image/jpeg"
+        | "image/png"
+        | "image/gif"
+        | "image/webp";
+      imageSource = { type: "base64", media_type: mediaType, data: base64 };
+    } else if (image && typeof image === "string") {
+      // Base64 data URL mode
+      const match = image.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (!match) {
+        return NextResponse.json(
+          { error: "Invalid image format. Expected base64 data URL." },
+          { status: 400 }
+        );
+      }
+      const mediaType = match[1] as
+        | "image/jpeg"
+        | "image/png"
+        | "image/gif"
+        | "image/webp";
+      imageSource = { type: "base64", media_type: mediaType, data: match[2] };
+    } else {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
 
     const client = new Anthropic({ apiKey });
 
@@ -144,10 +169,7 @@ export async function POST(request: NextRequest) {
         {
           role: "user",
           content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64Data },
-            },
+            { type: "image", source: imageSource },
             { type: "text", text: DECK_EXTRACTION_PROMPT },
           ],
         },
@@ -168,10 +190,7 @@ export async function POST(request: NextRequest) {
         {
           role: "user",
           content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64Data },
-            },
+            { type: "image", source: imageSource },
             { type: "text", text: evalPrompt },
           ],
         },

@@ -57,6 +57,7 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
   const [ocrMessage, setOcrMessage] = useState<string | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,6 +138,28 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
       setOcrMessage(`Extracted ${lines.length} lines from image. Review and edit before submitting.`);
     } catch {
       setOcrError("Could not read image. Try a clearer screenshot.");
+    } finally {
+      setOcrProgress(null);
+    }
+  }, []);
+
+  const processUrl = useCallback(async (url: string) => {
+    if (!url.trim()) return;
+
+    setOcrError(null);
+    setOcrMessage(null);
+    setOcrProgress(0);
+
+    try {
+      const { extractDecklistFromUrl } = await import("@/lib/ocr");
+      const extracted = await extractDecklistFromUrl(url.trim(), setOcrProgress);
+
+      const lines = extracted.split("\n").filter((l) => l.trim());
+      setText(extracted);
+      setImageUrl("");
+      setOcrMessage(`Extracted ${lines.length} lines from image. Review and edit before submitting.`);
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : "Could not read image from URL.");
     } finally {
       setOcrProgress(null);
     }
@@ -249,6 +272,30 @@ export default function DeckInput({ onSubmit, loading }: DeckInputProps) {
             <span className="text-amber-500 underline">browse</span>
           </p>
         )}
+      </div>
+
+      {/* Image URL input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && imageUrl.trim()) {
+              processUrl(imageUrl);
+            }
+          }}
+          placeholder="Or paste an image URL..."
+          disabled={isProcessingOcr}
+          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25 disabled:opacity-50"
+        />
+        <button
+          onClick={() => processUrl(imageUrl)}
+          disabled={isProcessingOcr || !imageUrl.trim()}
+          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 disabled:text-gray-600 text-gray-300 text-sm rounded-lg transition-colors shrink-0"
+        >
+          Scan
+        </button>
       </div>
 
       {/* OCR result message */}
