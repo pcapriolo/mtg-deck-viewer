@@ -1,6 +1,7 @@
 /**
  * Extract a decklist from a deck screenshot using Claude Vision API.
- * Calls the /api/ocr server route which handles the Anthropic API call.
+ * Two-pass process: Extract → Eval (verify quantities, catch missing cards).
+ * Calls the /api/ocr server route which handles both Anthropic API calls.
  */
 export async function extractDecklistFromImage(
   imageData: string,
