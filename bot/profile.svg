@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <!-- Background gradient - deep mystical dark -->
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#1a1035"/>
+      <stop offset="60%" stop-color="#0d0a1a"/>
+      <stop offset="100%" stop-color="#050308"/>
+    </radialGradient>
+
+    <!-- Card face gradient -->
+    <linearGradient id="cardFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2040"/>
+      <stop offset="100%" stop-color="#1a1028"/>
+    </linearGradient>
+
+    <!-- Gold border gradient -->
+    <linearGradient id="goldBorder" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d4a843"/>
+      <stop offset="30%" stop-color="#f5d978"/>
+      <stop offset="50%" stop-color="#d4a843"/>
+      <stop offset="70%" stop-color="#b8922e"/>
+      <stop offset="100%" stop-color="#d4a843"/>
+    </linearGradient>
+
+    <!-- Eye glow -->
+    <radialGradient id="eyeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.9"/>
+      <stop offset="40%" stop-color="#7c3aed" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Outer glow for the eye -->
+    <radialGradient id="outerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Ambient particle glow -->
+    <radialGradient id="particleGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#c4b5fd" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Mana symbol glow -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="bigGlow">
+      <feGaussianBlur stdDeviation="15" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" fill="url(#bg)"/>
+
+  <!-- Subtle dark vignette ring -->
+  <circle cx="200" cy="200" r="190" fill="none" stroke="#0a0612" stroke-width="40" opacity="0.5"/>
+
+  <!-- Ambient magical particles -->
+  <circle cx="80" cy="90" r="2" fill="#c4b5fd" opacity="0.4" filter="url(#glow)"/>
+  <circle cx="320" cy="70" r="1.5" fill="#a78bfa" opacity="0.3" filter="url(#glow)"/>
+  <circle cx="340" cy="300" r="2" fill="#c4b5fd" opacity="0.35" filter="url(#glow)"/>
+  <circle cx="60" cy="310" r="1.5" fill="#8b5cf6" opacity="0.3" filter="url(#glow)"/>
+  <circle cx="150" cy="50" r="1" fill="#ddd6fe" opacity="0.5" filter="url(#glow)"/>
+  <circle cx="300" cy="170" r="1.5" fill="#a78bfa" opacity="0.25" filter="url(#glow)"/>
+  <circle cx="95" cy="200" r="1" fill="#c4b5fd" opacity="0.3" filter="url(#glow)"/>
+  <circle cx="260" cy="350" r="1.5" fill="#8b5cf6" opacity="0.3" filter="url(#glow)"/>
+  <circle cx="140" cy="340" r="1" fill="#ddd6fe" opacity="0.35" filter="url(#glow)"/>
+
+  <!-- Back card (tilted left) -->
+  <g transform="translate(200,200) rotate(-12) translate(-200,-200)">
+    <rect x="120" y="95" width="145" height="205" rx="8" fill="#0f0a1e" stroke="url(#goldBorder)" stroke-width="2"/>
+    <rect x="126" y="101" width="133" height="193" rx="5" fill="url(#cardFace)" opacity="0.7"/>
+    <!-- Card back pattern -->
+    <ellipse cx="192" cy="197" rx="40" ry="55" fill="none" stroke="#d4a843" stroke-width="1" opacity="0.3"/>
+    <ellipse cx="192" cy="197" rx="25" ry="35" fill="none" stroke="#d4a843" stroke-width="0.8" opacity="0.2"/>
+  </g>
+
+  <!-- Middle card (tilted slightly left) -->
+  <g transform="translate(200,200) rotate(-4) translate(-200,-200)">
+    <rect x="128" y="98" width="145" height="205" rx="8" fill="#0f0a1e" stroke="url(#goldBorder)" stroke-width="2"/>
+    <rect x="134" y="104" width="133" height="193" rx="5" fill="url(#cardFace)" opacity="0.8"/>
+    <ellipse cx="200" cy="200" rx="40" ry="55" fill="none" stroke="#d4a843" stroke-width="1" opacity="0.3"/>
+    <ellipse cx="200" cy="200" rx="25" ry="35" fill="none" stroke="#d4a843" stroke-width="0.8" opacity="0.2"/>
+  </g>
+
+  <!-- Front card (straight) -->
+  <g>
+    <rect x="138" y="100" width="145" height="205" rx="8" fill="#0f0a1e" stroke="url(#goldBorder)" stroke-width="2.5"/>
+    <rect x="144" y="106" width="133" height="193" rx="5" fill="url(#cardFace)"/>
+
+    <!-- Card name bar -->
+    <rect x="152" y="114" width="117" height="18" rx="3" fill="#1e1535" stroke="#d4a843" stroke-width="0.7" opacity="0.9"/>
+
+    <!-- Card art area -->
+    <rect x="152" y="138" width="117" height="80" rx="2" fill="#12082a" stroke="#d4a843" stroke-width="0.5" opacity="0.8"/>
+
+    <!-- Inside the art area: the all-seeing eye -->
+    <circle cx="210" cy="178" r="30" fill="url(#eyeGlow)" filter="url(#bigGlow)"/>
+
+    <!-- Eye outer shape -->
+    <path d="M175,178 Q193,155 210,155 Q227,155 245,178 Q227,201 210,201 Q193,201 175,178 Z"
+          fill="none" stroke="#c4b5fd" stroke-width="1.8" filter="url(#glow)"/>
+
+    <!-- Iris -->
+    <circle cx="210" cy="178" r="14" fill="#2e1065" stroke="#a78bfa" stroke-width="1.2"/>
+    <circle cx="210" cy="178" r="14" fill="url(#outerGlow)"/>
+
+    <!-- Pupil -->
+    <circle cx="210" cy="178" r="6" fill="#0a0015"/>
+    <circle cx="210" cy="178" r="4" fill="#1a0030"/>
+
+    <!-- Eye highlight -->
+    <circle cx="205" cy="173" r="3" fill="#ddd6fe" opacity="0.6"/>
+    <circle cx="215" cy="175" r="1.5" fill="#c4b5fd" opacity="0.4"/>
+
+    <!-- Iris detail rays -->
+    <g opacity="0.4" stroke="#a78bfa" stroke-width="0.5">
+      <line x1="210" y1="164" x2="210" y2="170"/>
+      <line x1="210" y1="186" x2="210" y2="192"/>
+      <line x1="196" y1="178" x2="202" y2="178"/>
+      <line x1="218" y1="178" x2="224" y2="178"/>
+      <line x1="200" y1="168" x2="204" y2="173"/>
+      <line x1="220" y1="168" x2="216" y2="173"/>
+      <line x1="200" y1="188" x2="204" y2="183"/>
+      <line x1="220" y1="188" x2="216" y2="183"/>
+    </g>
+
+    <!-- Type bar -->
+    <rect x="152" y="224" width="117" height="14" rx="3" fill="#1e1535" stroke="#d4a843" stroke-width="0.5" opacity="0.8"/>
+
+    <!-- Text box area -->
+    <rect x="152" y="244" width="117" height="44" rx="3" fill="#1a1030" stroke="#d4a843" stroke-width="0.5" opacity="0.7"/>
+
+    <!-- Fake text lines in text box -->
+    <line x1="158" y1="255" x2="240" y2="255" stroke="#3a2860" stroke-width="2" opacity="0.6"/>
+    <line x1="158" y1="263" x2="230" y2="263" stroke="#3a2860" stroke-width="2" opacity="0.5"/>
+    <line x1="158" y1="271" x2="220" y2="271" stroke="#3a2860" stroke-width="2" opacity="0.4"/>
+    <line x1="158" y1="279" x2="195" y2="279" stroke="#3a2860" stroke-width="2" opacity="0.3"/>
+  </g>
+
+  <!-- Emanating light rays from the eye -->
+  <g opacity="0.15" filter="url(#softGlow)">
+    <line x1="210" y1="178" x2="50" y2="80" stroke="#a78bfa" stroke-width="1"/>
+    <line x1="210" y1="178" x2="350" y2="60" stroke="#8b5cf6" stroke-width="0.8"/>
+    <line x1="210" y1="178" x2="370" y2="280" stroke="#a78bfa" stroke-width="0.8"/>
+    <line x1="210" y1="178" x2="40" y2="320" stroke="#8b5cf6" stroke-width="1"/>
+    <line x1="210" y1="178" x2="50" y2="180" stroke="#a78bfa" stroke-width="0.6"/>
+    <line x1="210" y1="178" x2="370" y2="170" stroke="#8b5cf6" stroke-width="0.6"/>
+  </g>
+
+  <!-- Five mana pips across the bottom -->
+  <g transform="translate(0, 325)" filter="url(#glow)">
+    <!-- White mana -->
+    <circle cx="120" cy="0" r="14" fill="#1a1030" stroke="#f5e6a3" stroke-width="1.5"/>
+    <circle cx="120" cy="0" r="6" fill="#f5e6a3" opacity="0.8"/>
+
+    <!-- Blue mana -->
+    <circle cx="160" cy="0" r="14" fill="#1a1030" stroke="#5b9bd5" stroke-width="1.5"/>
+    <ellipse cx="160" cy="-1" rx="5" ry="6" fill="#5b9bd5" opacity="0.8"/>
+
+    <!-- Black mana -->
+    <circle cx="200" cy="0" r="14" fill="#1a1030" stroke="#9a8c98" stroke-width="1.5"/>
+    <circle cx="200" cy="-2" r="4" fill="#9a8c98" opacity="0.8"/>
+    <path d="M196,-2 L200,-8 L204,-2 Z" fill="#9a8c98" opacity="0.6"/>
+
+    <!-- Red mana -->
+    <circle cx="240" cy="0" r="14" fill="#1a1030" stroke="#e07050" stroke-width="1.5"/>
+    <path d="M234,2 Q237,-5 240,-3 Q243,-5 246,2 Z" fill="#e07050" opacity="0.8"/>
+
+    <!-- Green mana -->
+    <circle cx="280" cy="0" r="14" fill="#1a1030" stroke="#6aaa64" stroke-width="1.5"/>
+    <path d="M276,3 Q280,-6 284,3 Z" fill="#6aaa64" opacity="0.8"/>
+  </g>
+
+  <!-- Subtle bottom text area -->
+  <text x="200" y="370" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="#d4a843" letter-spacing="3" opacity="0.85" font-weight="bold">DECK VISUALIZER</text>
+</svg>

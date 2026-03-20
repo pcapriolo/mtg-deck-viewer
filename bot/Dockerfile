@@ -1,6 +1,6 @@
 FROM node:20-slim
 WORKDIR /app
-COPY package*.json ./
+COPY bot/package*.json ./
 RUN npm ci
-COPY . .
-CMD ["npm", "start"]
+COPY bot/ .
+CMD ["npx", "tsx", "bot.ts"]

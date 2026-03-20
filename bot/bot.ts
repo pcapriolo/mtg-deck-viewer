@@ -245,6 +245,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Minimal health endpoint for Railway (expects a port)
+import http from "node:http";
+const PORT = process.env.PORT ?? "3001";
+
+function startHealthServer() {
+  http
+    .createServer((_req, res) => {
+      res.writeHead(200);
+      res.end("ok");
+    })
+    .listen(parseInt(PORT), () => {
+      console.log(`   Health endpoint on :${PORT}`);
+    });
+}
+
 // Only run when executed directly (not when imported for testing)
 const isMainModule =
   typeof process !== "undefined" &&
@@ -252,6 +267,7 @@ const isMainModule =
   (process.argv[1].endsWith("bot.ts") || process.argv[1].endsWith("bot.js"));
 
 if (isMainModule) {
+  startHealthServer();
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
