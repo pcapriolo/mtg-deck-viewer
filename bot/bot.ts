@@ -21,9 +21,14 @@
  *   POLL_INTERVAL      — Seconds between polls (default: 60)
  */
 
+import "dotenv/config";
+import fs from "node:fs";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
 import { extractDecklistFromImages } from "./ocr";
 import { encodeDeckUrl, summarizeDecklist } from "./encoder";
+
+const SINCE_ID_FILE = "./since-id.txt";
+const FRESH_START_WINDOW = 5 * 60 * 1000; // 5 minutes
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL ?? "60", 10) * 1000;
 const DECK_VIEWER_URL = process.env.DECK_VIEWER_URL ?? "http://localhost:3000";
@@ -54,6 +59,12 @@ async function main() {
     throw new Error(`Failed to authenticate with X: ${err}`);
   }
 
+  // Restore sinceId from disk if available
+  try {
+    sinceId = fs.readFileSync(SINCE_ID_FILE, "utf8").trim();
+    console.log(`   Restored sinceId: ${sinceId}`);
+  } catch {}
+
   console.log("   Polling for mentions...\n");
 
   while (true) {
@@ -67,15 +78,30 @@ async function main() {
 }
 
 async function poll(reader: ReturnType<typeof createClient>["reader"], writer: ReturnType<typeof createClient>["writer"]) {
+  const isFreshStart = sinceId === undefined;
   const mentions = await fetchMentions(reader, BOT_USER_ID, sinceId);
 
   if (mentions.length === 0) return;
 
-  // Update sinceId to the newest mention
-  sinceId = mentions[0].id;
+  // On fresh start (no persisted sinceId), skip mentions older than 5 minutes
+  // to avoid re-processing stale mentions after a deploy resets the filesystem
+  const freshMentions = isFreshStart
+    ? mentions.filter((m) => {
+        const age = Date.now() - new Date(m.createdAt).getTime();
+        return age < FRESH_START_WINDOW;
+      })
+    : mentions;
 
-  for (const mention of mentions) {
+  // Update sinceId to the newest mention (even if we filtered some out)
+  sinceId = mentions[0].id;
+  fs.writeFileSync(SINCE_ID_FILE, sinceId);
+
+  for (const mention of freshMentions) {
     if (processed.has(mention.id)) continue;
+
+    // Skip self-mentions (bot replying to itself)
+    if (mention.authorId === BOT_USER_ID) continue;
+
     processed.add(mention.id);
 
     console.log(`📩 Mention from @${mention.authorUsername}: "${mention.text.slice(0, 80)}..."`);
@@ -93,17 +119,34 @@ async function handleMention(
   writer: ReturnType<typeof createClient>["writer"],
   mention: MentionTweet
 ) {
-  // Step 1: Collect images from the mention itself and up the reply chain
+  // Step 1: Try text-based decklist detection before image OCR
+  const textDecklist = extractDecklistFromText(mention.text);
+  if (textDecklist) {
+    const lineCount = textDecklist.split("\n").filter((l) => l.trim()).length;
+    console.log(`   📝 Found decklist in text: ${lineCount} lines`);
+
+    const deckUrl = encodeDeckUrl(textDecklist, DECK_VIEWER_URL);
+    const summary = summarizeDecklist(textDecklist);
+
+    console.log(`   🔗 ${deckUrl}`);
+    console.log(`   📝 ${summary}`);
+
+    const replyId = await replyWithLink(writer, mention.id, deckUrl, summary);
+    console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
+    return;
+  }
+
+  // Step 2: Collect images from the mention itself and up the reply chain
   const images = await collectImages(reader, mention);
 
   if (images.length === 0) {
-    console.log("   ⚠️  No images found in thread. Skipping.");
+    console.log("   ⚠️  No images or decklist found in thread. Skipping.");
     return;
   }
 
   console.log(`   🖼️  Found ${images.length} image(s). Running OCR...`);
 
-  // Step 2: OCR the images
+  // Step 3: OCR the images
   const decklist = await extractDecklistFromImages(images);
 
   if (!decklist) {
@@ -114,16 +157,35 @@ async function handleMention(
   const lineCount = decklist.split("\n").filter((l) => l.trim()).length;
   console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
 
-  // Step 3: Generate the deck viewer URL
+  // Step 4: Generate the deck viewer URL
   const deckUrl = encodeDeckUrl(decklist, DECK_VIEWER_URL);
   const summary = summarizeDecklist(decklist);
 
   console.log(`   🔗 ${deckUrl}`);
   console.log(`   📝 ${summary}`);
 
-  // Step 4: Reply
+  // Step 5: Reply
   const replyId = await replyWithLink(writer, mention.id, deckUrl, summary);
   console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
+}
+
+/**
+ * Extract a decklist from tweet text by stripping @mentions and URLs,
+ * then checking if 3+ lines match the "Nx CardName" pattern.
+ * Returns the cleaned decklist text, or null if not enough lines match.
+ */
+export function extractDecklistFromText(text: string): string | null {
+  const cleaned = text
+    .replace(/@\w+/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .trim();
+
+  const lines = cleaned.split("\n").map((l) => l.trim()).filter((l) => l);
+  const deckLines = lines.filter((l) => /^\d+x?\s+\w/i.test(l));
+
+  if (deckLines.length < 3) return null;
+
+  return deckLines.join("\n");
 }
 
 /**
@@ -161,7 +223,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Only run when executed directly (not when imported for testing)
+const isMainModule =
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  (process.argv[1].endsWith("bot.ts") || process.argv[1].endsWith("bot.js"));
+
+if (isMainModule) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}
