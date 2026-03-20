@@ -1,0 +1,5 @@
+node_modules
+.env
+since-id.txt
+__tests__
+*.test.ts
