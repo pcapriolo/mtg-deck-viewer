@@ -50,7 +50,16 @@ CROSS-CHECK:
 Sum your mainboard total. If the image shows a card count (e.g., "60/60 Cards"), your total MUST match.
 If it doesn't match, re-scan every column and fix before outputting.
 
-OUTPUT FORMAT (start IMMEDIATELY with the first card — no preamble):
+DECK METADATA (output BEFORE the card list):
+If a DECK NAME is visible in the image (title bar, header, deck builder label), output it as the FIRST line:
+Name: Deck Name Here
+If a CREATOR/AUTHOR username is visible in the deck builder UI, output it on the next line:
+Author: Creator Name
+Do NOT invent a name or author — only include if clearly visible in the image.
+
+OUTPUT FORMAT (start IMMEDIATELY — no preamble):
+Name: Deck Name (if visible)
+Author: Creator (if visible)
 N Card Name
 N Card Name
 ...
@@ -83,6 +92,8 @@ CHECK EACH ITEM:
 
 7. NAME ACCURACY: Are any card names misspelled or misread?
 
+8. DECK NAME & AUTHOR: If the extracted list includes "Name:" or "Author:" lines, verify they match text visible in the image. Remove if hallucinated. Preserve if accurate.
+
 If you find ANY errors, output the CORRECTED decklist. If no errors found, output the original decklist unchanged.
 
 OUTPUT FORMAT (corrected decklist only — no commentary, no explanation):
@@ -107,9 +118,11 @@ function getClient(): Anthropic {
 function cleanResponse(text: string): string {
   const lines = text.split("\n");
 
+  // Find the first meaningful line (Name/Author metadata or card line)
   let startIdx = 0;
   for (let i = 0; i < lines.length; i++) {
-    if (/^\d+\s+\S/.test(lines[i].trim())) {
+    const trimmed = lines[i].trim();
+    if (/^\d+\s+\S/.test(trimmed) || /^(name|author)[:\s]/i.test(trimmed)) {
       startIdx = i;
       break;
     }
@@ -122,6 +135,7 @@ function cleanResponse(text: string): string {
     if (!trimmed) return true;
     if (/^sideboard$/i.test(trimmed)) return true;
     if (/^\d+[xX]?\s+\S/.test(trimmed)) return true;
+    if (/^(name|author)[:\s]/i.test(trimmed)) return true;
     return false;
   });
 

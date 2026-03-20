@@ -3,6 +3,7 @@ import { decodeDeck } from "@/lib/deck-encoder";
 import { fetchCardsAction } from "@/lib/scryfall-server";
 import { mainboardEntries, sideboardEntries, totalCards } from "@/lib/parser";
 import type { ScryfallCard } from "@/lib/scryfall";
+import { categorizeCard } from "@/lib/scryfall";
 import type { ResolvedEntry } from "@/lib/types";
 import SharedDeckView from "./SharedDeckView";
 
@@ -40,6 +41,62 @@ interface PageProps {
   params: Promise<{ encoded: string }>;
 }
 
+const COLOR_PIP: Record<string, string> = {
+  W: "⚪", U: "🔵", B: "⚫", R: "🔴", G: "🟢",
+};
+const COLOR_ORDER = ["W", "U", "B", "R", "G"];
+
+function colorPips(cards: Record<string, ScryfallCard>): string {
+  const colors = new Set<string>();
+  for (const card of Object.values(cards)) {
+    for (const c of card.color_identity) colors.add(c);
+  }
+  return COLOR_ORDER.filter((c) => colors.has(c)).map((c) => COLOR_PIP[c]).join("");
+}
+
+function selectOgCard(
+  cardData: Record<string, ScryfallCard>,
+  main: ReturnType<typeof mainboardEntries>,
+  deckName?: string
+): ScryfallCard | undefined {
+  const allCards = Object.values(cardData);
+
+  // 1. Namesake match — deck name matches a card name
+  if (deckName) {
+    const nameLower = deckName.toLowerCase();
+    const namesake = allCards.find((c) =>
+      nameLower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(nameLower)
+    );
+    if (namesake) return namesake;
+
+    // Word overlap fallback
+    const nameWords = nameLower.split(/\s+/).filter((w) => w.length > 2);
+    let bestCard: ScryfallCard | undefined;
+    let bestOverlap = 0;
+    for (const card of allCards) {
+      const cardWords = card.name.toLowerCase().split(/\s+/);
+      const overlap = nameWords.filter((w) => cardWords.some((cw) => cw.includes(w) || w.includes(cw))).length;
+      if (overlap > bestOverlap) { bestOverlap = overlap; bestCard = card; }
+    }
+    if (bestCard && bestOverlap >= 1) return bestCard;
+  }
+
+  // 2. Most expensive card
+  const byPrice = allCards
+    .filter((c) => c.prices.usd)
+    .sort((a, b) => parseFloat(b.prices.usd!) - parseFloat(a.prices.usd!));
+  if (byPrice.length > 0) return byPrice[0];
+
+  // 3. First mainboard card
+  for (const entry of main) {
+    const key = entry.name.toLowerCase();
+    const card = cardData[key];
+    if (card) return card;
+  }
+
+  return allCards[0];
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { encoded } = await params;
 
@@ -48,9 +105,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const entries = deck.entries;
     const cardCount = totalCards(entries);
     const title = deck.name || "Shared Deck";
-    const description = `${cardCount} card deck — view and export on MTG Deck Viewer`;
 
-    // Fetch cards to get an OG image from the first card
+    // Fetch cards to get OG image and stats
     const uniqueCards = new Map<string, { name: string; set?: string }>();
     for (const entry of entries) {
       const key = entry.name.toLowerCase();
@@ -60,21 +116,37 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     }
 
     let ogImage: string | undefined;
+    let description = `${cardCount} card deck — view and export on MTG Deck Viewer`;
+
     try {
       const cardData = await fetchCardsAction(Array.from(uniqueCards.values()));
-      // Use the first mainboard card's art_crop as the OG image
       const main = mainboardEntries(deck);
+
+      // Select OG image: namesake > expensive > first
+      const ogCard = selectOgCard(cardData, main, deck.name);
+      if (ogCard) ogImage = getArtCropUrl(ogCard);
+
+      // Build rich description with color pips and type counts
+      const pips = colorPips(cardData);
+      let creatureCount = 0, spellCount = 0, landCount = 0;
       for (const entry of main) {
         const key = entry.name.toLowerCase();
-        const setKey = entry.set ? `${key}|${entry.set.toLowerCase()}` : undefined;
-        const card = (setKey ? cardData[setKey] : undefined) ?? cardData[key];
+        const card = cardData[key];
         if (card) {
-          ogImage = getArtCropUrl(card);
-          break;
+          const cat = categorizeCard(card);
+          if (cat === "Land") landCount += entry.quantity;
+          else if (cat === "Creature") creatureCount += entry.quantity;
+          else spellCount += entry.quantity;
         }
       }
+      const statParts = [
+        `${cardCount} cards`,
+        ...(pips ? [pips] : []),
+        `${creatureCount} creatures, ${spellCount} spells, ${landCount} lands`,
+      ];
+      description = statParts.join(" · ");
     } catch {
-      // If Scryfall fails during metadata generation, skip the OG image
+      // If Scryfall fails, use basic description
     }
 
     return {

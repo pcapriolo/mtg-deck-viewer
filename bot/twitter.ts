@@ -166,9 +166,10 @@ export async function replyWithLink(
   writer: TwitterApi,
   replyToId: string,
   deckUrl: string,
-  deckSummary: string
+  replyText: string
 ): Promise<string> {
-  const text = `${deckSummary}\n\nView interactive deck: ${deckUrl}`;
+  // Replace the "▶ View deck →" placeholder with the actual URL
+  const text = replyText.replace("▶ View deck →", `▶ View deck → ${deckUrl}`);
 
   const response = await writer.v2.tweet({
     text,

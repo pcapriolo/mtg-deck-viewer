@@ -25,7 +25,9 @@ import "dotenv/config";
 import fs from "node:fs";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
 import { extractDecklistFromImages } from "./ocr";
-import { encodeDeckUrl, summarizeDecklist } from "./encoder";
+import { encodeDeckUrl, composeReplyText, extractDeckName } from "./encoder";
+import { fetchCards } from "./scryfall";
+import { deriveDeckStats } from "./stats";
 
 const SINCE_ID_FILE = "./since-id.txt";
 const FRESH_START_WINDOW = 5 * 60 * 1000; // 5 minutes
@@ -119,53 +121,73 @@ async function handleMention(
   writer: ReturnType<typeof createClient>["writer"],
   mention: MentionTweet
 ) {
+  let decklistText: string | null = null;
+
   // Step 1: Try text-based decklist detection before image OCR
   const textDecklist = extractDecklistFromText(mention.text);
   if (textDecklist) {
     const lineCount = textDecklist.split("\n").filter((l) => l.trim()).length;
     console.log(`   📝 Found decklist in text: ${lineCount} lines`);
+    decklistText = textDecklist;
+  } else {
+    // Step 2: Collect images from the mention itself and up the reply chain
+    const images = await collectImages(reader, mention);
 
-    const deckUrl = encodeDeckUrl(textDecklist, DECK_VIEWER_URL);
-    const summary = summarizeDecklist(textDecklist);
+    if (images.length === 0) {
+      console.log("   ⚠️  No images or decklist found in thread. Skipping.");
+      return;
+    }
 
-    console.log(`   🔗 ${deckUrl}`);
-    console.log(`   📝 ${summary}`);
+    console.log(`   🖼️  Found ${images.length} image(s). Running OCR...`);
 
-    const replyId = await replyWithLink(writer, mention.id, deckUrl, summary);
-    console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
-    return;
+    // Step 3: OCR the images
+    decklistText = await extractDecklistFromImages(images);
+
+    if (!decklistText) {
+      console.log("   ⚠️  No decklist found in images. Skipping.");
+      return;
+    }
+
+    const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
+    console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
   }
 
-  // Step 2: Collect images from the mention itself and up the reply chain
-  const images = await collectImages(reader, mention);
+  // Step 4: Enrich with Scryfall data (colors, types, prices)
+  const deckName = extractDeckName(decklistText);
+  let replyText: string;
 
-  if (images.length === 0) {
-    console.log("   ⚠️  No images or decklist found in thread. Skipping.");
-    return;
+  try {
+    const cardNames = decklistText
+      .split("\n")
+      .map((l) => l.match(/^\d+\s+(.+)$/)?.[1]?.trim())
+      .filter(Boolean) as string[];
+
+    const cards = await fetchCards(cardNames);
+    const stats = deriveDeckStats(cards, decklistText, deckName);
+
+    console.log(`   🎨 Colors: ${stats.colorPips || "(colorless)"}`);
+    console.log(`   📊 ${stats.creatureCount} creatures, ${stats.spellCount} spells, ${stats.landCount} lands`);
+
+    replyText = composeReplyText(stats, deckName);
+  } catch (err) {
+    console.error("   ⚠️  Scryfall enrichment failed, using basic reply:", err);
+    // Fallback to basic format
+    const mainCount = decklistText
+      .split("\n")
+      .filter((l) => /^\d+\s/.test(l.trim()))
+      .reduce((sum, l) => sum + parseInt(l.match(/^(\d+)/)?.[1] ?? "0"), 0);
+    replyText = deckName
+      ? `${deckName} · ${mainCount} cards\n\n▶ View deck →`
+      : `${mainCount}-card deck\n\n▶ View deck →`;
   }
 
-  console.log(`   🖼️  Found ${images.length} image(s). Running OCR...`);
-
-  // Step 3: OCR the images
-  const decklist = await extractDecklistFromImages(images);
-
-  if (!decklist) {
-    console.log("   ⚠️  No decklist found in images. Skipping.");
-    return;
-  }
-
-  const lineCount = decklist.split("\n").filter((l) => l.trim()).length;
-  console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
-
-  // Step 4: Generate the deck viewer URL
-  const deckUrl = encodeDeckUrl(decklist, DECK_VIEWER_URL);
-  const summary = summarizeDecklist(decklist);
+  // Step 5: Generate the deck viewer URL and reply
+  const deckUrl = encodeDeckUrl(decklistText, DECK_VIEWER_URL);
 
   console.log(`   🔗 ${deckUrl}`);
-  console.log(`   📝 ${summary}`);
+  console.log(`   📝 ${replyText.split("\n")[0]}`);
 
-  // Step 5: Reply
-  const replyId = await replyWithLink(writer, mention.id, deckUrl, summary);
+  const replyId = await replyWithLink(writer, mention.id, deckUrl, replyText);
   console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
 }
 
