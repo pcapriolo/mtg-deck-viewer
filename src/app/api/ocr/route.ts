@@ -27,6 +27,15 @@ READING QUANTITY BADGES:
 - Read each badge number TWICE. Common misreads: "2" vs "4", "3" vs "8".
 - Stack height confirms badge: x4 stacks are noticeably taller than x2.
 
+DOUBLE-FACED CARDS (DFC / TRANSFORM):
+- Some cards show BOTH faces in the image (front + back). Only count them ONCE using the FRONT face name.
+- DFC back faces may appear rotated sideways or adjacent to their front face. Do NOT count them as separate cards.
+- Common DFC pairs: "X // Y" — only list the front face name or the full "X // Y" name, never both separately.
+
+LEGALITY CHECK:
+- No non-basic card can have more than 4 copies. If you count 5+ of any card that is NOT a basic land (Plains, Island, Swamp, Mountain, Forest), you miscounted — recount that card.
+- Basic lands CAN have more than 4 copies.
+
 ARENA-SPECIFIC:
 - The rightmost panel labeled "Sideboard" contains a scrollable text list with "1x Card Name" format. Read EVERY entry.
 - The main deck area has 4-5 columns of card stacks. Read ALL of them.
@@ -53,17 +62,21 @@ EXTRACTED DECKLIST:
 CHECK EACH ITEM:
 1. QUANTITY HALLUCINATION: For every card with quantity > 1, verify you can see a visible "x4"/"x3"/"x2" badge or multiple stacked peek bars in the image. If a card shows NO badge and NO stacking, its quantity MUST be 1. This is the #1 error — inventing quantities for single cards.
 
-2. MISSING CARDS: Scan every column left to right, top to bottom. Is there any card visible in the image that is NOT in the decklist? Pay special attention to:
+2. LEGALITY: No non-basic card can have more than 4 copies. If any card has 5+, it is miscounted — look at the image again and fix it. Basic lands (Plains, Island, Swamp, Mountain, Forest) CAN exceed 4.
+
+3. DOUBLE-FACED CARDS: If a card's back face appears in the image (rotated sideways or adjacent), do NOT count it as a separate card. Only count front faces. If you listed the same DFC as both "Front Name" and "Back Name", merge them into one entry.
+
+4. MISSING CARDS: Scan every column left to right, top to bottom. Is there any card visible in the image that is NOT in the decklist? Pay special attention to:
    - Cards between columns (transition areas)
    - Single cards without badges (easy to overlook)
    - The bottom card in each column
    - Lands — count every single one
 
-3. CARD COUNT: Sum the mainboard. Does it match the count shown in the image? If not, find the discrepancy.
+5. CARD COUNT: Sum the mainboard. Does it match the count shown in the image? If not, find the discrepancy.
 
-4. SIDEBOARD: If the image has a sideboard panel, verify every entry is captured.
+6. SIDEBOARD: If the image has a sideboard panel, verify every entry is captured.
 
-5. NAME ACCURACY: Are any card names misspelled or misread?
+7. NAME ACCURACY: Are any card names misspelled or misread?
 
 If you find ANY errors, output the CORRECTED decklist. If no errors found, output the original decklist unchanged.
 
