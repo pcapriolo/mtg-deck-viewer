@@ -13,13 +13,13 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "dotenv": "^17.3.1",
     "pako": "^2.1.0",
-    "twitter-api-v2": "^1.18.0"
+    "tsx": "^4.19.0",
+    "twitter-api-v2": "^1.18.0",
+    "typescript": "^5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/pako": "^2.0.4",
-    "tsx": "^4.19.0",
-    "typescript": "^5",
     "vitest": "^3.2.4"
   }
 }
