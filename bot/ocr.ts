@@ -24,17 +24,15 @@ READING CARD NAMES:
 5. Card names may contain accents, diacritics, commas, apostrophes, hyphens, and slashes (//). These are real names — include special characters exactly as written on the card. Do not skip a card because its name looks unusual.
 6. EVERY card visible in the image must appear in your output. If you can see a card's title bar, it must be listed.
 
-CRITICAL — QUANTITY DEFAULTS TO 1:
-Every card is 1 copy UNLESS you can see one of these:
-- A visible "x4", "x3", "x2" text badge overlay on the card image
-- Multiple peek bars above the card (stacked copies with visible title bars)
-Do NOT infer quantities from context, card type, or what decks usually run.
-If you cannot point to a specific visual indicator of quantity > 1, it is EXACTLY 1.
-A single card image with no badge and no peek bars above it = 1 copy. Period.
-
-READING QUANTITY BADGES:
-- Read each badge number TWICE. Common misreads: "2" vs "4", "3" vs "8".
-- Stack height confirms badge: x4 stacks are noticeably taller than x2.
+READING QUANTITIES — CHECK EVERY CARD FOR A BADGE:
+Most cards in deck builder screenshots have a visible quantity badge (x4, x3, x2).
+For EVERY card:
+1. Look for a badge overlay (usually bottom-right or top-right of the card image).
+2. If a badge is visible, read that number. Read it carefully — common misreads: "2" vs "4", "3" vs "8".
+3. Stack height confirms badge: x4 stacks are visually taller than x2 stacks.
+4. If NO badge is visible AND the card is NOT stacked, the quantity is 1.
+5. NEVER guess quantities from context, card type, or what decks usually run.
+6. Basic lands CAN have 5+ copies — read their badge carefully.
 
 DOUBLE-FACED CARDS (DFC / SPLIT CARDS / TRANSFORM):
 - Some cards show BOTH faces in the image (front + back). Only count them ONCE using the FRONT face name.
@@ -67,36 +65,38 @@ Sideboard
 N Card Name
 ...`;
 
-const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. You were given an image of a deck and produced the decklist below. Now verify it against the image.
+const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. Verify the extracted decklist against the image.
 
 EXTRACTED DECKLIST:
 {decklist}
 
-CHECK EACH ITEM:
-1. QUANTITY HALLUCINATION: For every card with quantity > 1, verify you can see a visible "x4"/"x3"/"x2" badge or multiple stacked peek bars in the image. If a card shows NO badge and NO stacking, its quantity MUST be 1. This is the #1 error — inventing quantities for single cards.
+VERIFICATION STEPS (do all of these):
 
-2. LEGALITY: No non-basic card can have more than 4 copies. If any card has 5+, it is miscounted — look at the image again and fix it. Basic lands (Plains, Island, Swamp, Mountain, Forest) CAN exceed 4.
+1. QUANTITY CHECK: For EVERY card, look at its badge in the image. Does the extracted quantity match the visible badge? Re-read each badge carefully. Common errors: reading x3 as x4, missing a badge entirely (defaulting to 1 when badge says x4), or inventing a quantity that has no badge.
 
-3. DOUBLE-FACED CARDS / SPLIT CARDS: If a card's back face or second half appears in the image (rotated sideways or adjacent), do NOT count it as a separate card. Only count front faces. If you listed the same DFC/split card as both "Front Name" and "Back Name", merge them into one entry using the full name "Front // Back".
+2. LEGALITY: No non-basic card can have more than 4 copies. Basic lands (Plains, Island, Swamp, Mountain, Forest) CAN exceed 4.
 
-4. MISSING CARDS: Scan every column left to right, top to bottom. Is there any card visible in the image that is NOT in the decklist? Pay special attention to:
-   - Cards between columns (transition areas)
-   - Single cards without badges (easy to overlook)
-   - The bottom card in each column
-   - Lands — count every single one
-   - Cards with accents or diacritics in names — these are real card names, not OCR artifacts
+3. DOUBLE-FACED / SPLIT CARDS: If both faces of a card appear, count only once. Merge into "Front // Back" format.
 
-5. CARD COUNT: Sum the mainboard. Does it match the count shown in the image? If not, find the discrepancy.
+4. MISSING CARDS: Scan every column left to right, top to bottom. Any card visible in the image but NOT in the decklist? Check: inter-column cards, bottom cards in each column, all lands.
+
+5. CARD COUNT — MANDATORY ARITHMETIC:
+   Write out the sum of all mainboard quantities: N1 + N2 + N3 + ... = TOTAL.
+   If the image shows a card count (e.g., "60/60 Cards"), your TOTAL must match.
+   If TOTAL ≠ image count, you MUST find every discrepancy and fix it.
+   Do NOT output a decklist where your sum does not match the image count.
 
 6. SIDEBOARD: If the image has a sideboard panel, verify every entry is captured.
 
-7. NAME ACCURACY: Are any card names misspelled or misread?
+7. NAME ACCURACY: Check each card name against the title bar in the image. Common OCR errors: dropped letters ("Llanwar" should be "Llanowar"), swapped letters ("Starting" should be "Starring"), wrong vowels. If a name looks almost-right but slightly off, correct it to match the card title exactly as printed.
 
-8. DECK NAME & AUTHOR: If the extracted list includes "Name:" or "Author:" lines, verify they match text visible in the image. Remove if hallucinated. Preserve if accurate.
+8. DECK NAME & AUTHOR: Preserve if they match the image. Remove if hallucinated.
 
-If you find ANY errors, output the CORRECTED decklist. If no errors found, output the original decklist unchanged.
+OUTPUT FORMAT:
+First, write your arithmetic sum (this line will be stripped):
+SUM: N1+N2+N3+...=TOTAL (expected: IMAGE_COUNT)
 
-OUTPUT FORMAT (corrected decklist only — no commentary, no explanation):
+Then output the corrected decklist (or original if no errors):
 N Card Name
 ...
 Sideboard
@@ -136,6 +136,8 @@ function cleanResponse(text: string): string {
     if (/^sideboard$/i.test(trimmed)) return true;
     if (/^\d+[xX]?\s+\S/.test(trimmed)) return true;
     if (/^(name|author)[:\s]/i.test(trimmed)) return true;
+    // Strip the SUM: arithmetic line from eval pass
+    if (/^sum[:\s]/i.test(trimmed)) return false;
     return false;
   });
 
@@ -230,9 +232,103 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
     .trim();
 
   const secondPass = cleanResponse(evalText);
+  let result = secondPass.length > 0 ? secondPass : firstPass;
 
-  const result = secondPass.length > 0 ? secondPass : firstPass;
+  // Pass 3 (conditional): Count correction
+  // If the eval pass total doesn't match the expected count, run a targeted fix
+  const expectedCount = extractExpectedCount(extractText) ?? extractExpectedCount(firstPass);
+  const actualCount = countCards(result);
+  if (expectedCount && actualCount !== expectedCount) {
+    console.log(`   ⚠️  Count mismatch: got ${actualCount}, expected ${expectedCount}. Running correction pass...`);
+    const corrected = await correctCountMismatch(anthropic, imageSource, result, actualCount, expectedCount);
+    if (corrected) {
+      const correctedCount = countCards(corrected);
+      if (Math.abs(correctedCount - expectedCount) < Math.abs(actualCount - expectedCount)) {
+        result = corrected;
+        console.log(`   ✅ Correction pass: ${actualCount} → ${correctedCount} cards`);
+      }
+    }
+  }
+
   return mergeSplitCards(result);
+}
+
+/**
+ * Extract expected card count from text like "60/60 Cards" or "60 Cards".
+ */
+function extractExpectedCount(text: string): number | null {
+  const match = text.match(/(\d+)\/\d+\s*cards/i) ?? text.match(/(\d+)\s*cards/i);
+  return match ? parseInt(match[1]) : null;
+}
+
+/**
+ * Count total cards in a decklist string.
+ */
+function countCards(decklist: string): number {
+  let total = 0;
+  let inSideboard = false;
+  for (const line of decklist.split("\n")) {
+    const trimmed = line.trim().toLowerCase();
+    if (/^sideboard$/i.test(trimmed)) { inSideboard = true; continue; }
+    if (inSideboard) continue;
+    const match = line.match(/^(\d+)\s/);
+    if (match) total += parseInt(match[1]);
+  }
+  return total;
+}
+
+/**
+ * Pass 3: Targeted count correction.
+ * When the total is wrong, ask Claude to find exactly which cards have wrong quantities.
+ */
+async function correctCountMismatch(
+  anthropic: Anthropic,
+  imageSource: Anthropic.ImageBlockParam["source"],
+  decklist: string,
+  actualCount: number,
+  expectedCount: number
+): Promise<string | null> {
+  const diff = expectedCount - actualCount;
+  const direction = diff > 0 ? "MISSING" : "EXTRA";
+
+  const prompt = `The decklist below has ${actualCount} mainboard cards but the image shows ${expectedCount}. That means ${Math.abs(diff)} cards are ${direction}.
+
+CURRENT DECKLIST:
+${decklist}
+
+Look at EVERY card's quantity badge in the image and compare to the decklist. Find the ${Math.abs(diff)} ${direction.toLowerCase()} cards.
+- For each card, re-read its badge from the image.
+- If the badge says x4 but the decklist says 1, fix it.
+- If the badge says x2 but the decklist says 4, fix it.
+- Check basic lands especially — they can have 5+ copies.
+
+Output the CORRECTED decklist only (no explanation):
+N Card Name
+...`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: imageSource },
+          { type: "text", text: prompt },
+        ],
+      }],
+    });
+
+    const text = msg.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as any).text)
+      .join("")
+      .trim();
+
+    return cleanResponse(text);
+  } catch {
+    return null;
+  }
 }
 
 /**

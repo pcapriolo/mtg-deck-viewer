@@ -245,5 +245,35 @@ export async function fetchCardsAction(
     }
   }
 
+  // Fuzzy fallback: for any requested name not found, try Scryfall fuzzy search
+  const missing = uncached.filter((id) => {
+    const key = cacheKey(id.name, id.set);
+    const nameOnly = cacheKey(id.name);
+    return !results[key] && !results[nameOnly];
+  });
+
+  for (const id of missing) {
+    await enforceRateLimit();
+    try {
+      const resp = await fetch(
+        `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(id.name)}`,
+      );
+      if (resp.ok) {
+        const card = (await resp.json()) as ScryfallCard;
+        const nameKey = cacheKey(card.name);
+        cacheSet(nameKey, card);
+        results[nameKey] = card;
+        // Also index by the original (possibly misspelled) name
+        const origKey = cacheKey(id.name);
+        if (origKey !== nameKey) {
+          cacheSet(origKey, card);
+          results[origKey] = card;
+        }
+      }
+    } catch {
+      // Fuzzy search failed — skip
+    }
+  }
+
   return results;
 }

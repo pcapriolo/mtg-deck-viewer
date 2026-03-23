@@ -91,5 +91,34 @@ export async function fetchCards(
     }
   }
 
+  // Fuzzy fallback: for any requested name not found, try Scryfall fuzzy search
+  const missing = unique.filter((n) => !results[n.toLowerCase()]);
+  for (const name of missing) {
+    await enforceRateLimit();
+    try {
+      const resp = await fetch(
+        `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`,
+      );
+      if (resp.ok) {
+        const card = (await resp.json()) as BotScryfallCard;
+        const key = card.name.toLowerCase();
+        results[key] = card;
+        // Also index by the original misspelled name so callers can find it
+        results[name.toLowerCase()] = card;
+        if (card.name.toLowerCase() !== name.toLowerCase()) {
+          console.log(`   🔤 Fuzzy fix: "${name}" → "${card.name}"`);
+        }
+        if (card.name.includes(" // ")) {
+          for (const face of card.name.split(" // ")) {
+            const faceKey = face.trim().toLowerCase();
+            if (!results[faceKey]) results[faceKey] = card;
+          }
+        }
+      }
+    } catch {
+      // Fuzzy search failed — skip this card
+    }
+  }
+
   return results;
 }
