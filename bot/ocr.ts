@@ -184,7 +184,7 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
 
   // Pass 1: Extract
   const extractMsg = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-opus-4-6",
     max_tokens: 4000,
     messages: [
       {
@@ -212,7 +212,7 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
   const evalPrompt = EVAL_PROMPT.replace("{decklist}", firstPass);
 
   const evalMsg = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-opus-4-6",
     max_tokens: 4000,
     messages: [
       {
@@ -235,8 +235,10 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
   let result = secondPass.length > 0 ? secondPass : firstPass;
 
   // Pass 3 (conditional): Count correction
-  // If the eval pass total doesn't match the expected count, run a targeted fix
-  const expectedCount = extractExpectedCount(extractText) ?? extractExpectedCount(firstPass);
+  // Check all text sources for an expected count (e.g., "60/60 Cards")
+  const expectedCount = extractExpectedCount(extractText)
+    ?? extractExpectedCount(evalText)
+    ?? extractExpectedCount(firstPass);
   const actualCount = countCards(result);
   if (expectedCount && actualCount !== expectedCount) {
     console.log(`   ⚠️  Count mismatch: got ${actualCount}, expected ${expectedCount}. Running correction pass...`);
@@ -254,11 +256,24 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
 }
 
 /**
- * Extract expected card count from text like "60/60 Cards" or "60 Cards".
+ * Extract expected card count from text like "60/60 Cards", "60 Cards",
+ * "expected: 60", or "image shows 60".
  */
 function extractExpectedCount(text: string): number | null {
-  const match = text.match(/(\d+)\/\d+\s*cards/i) ?? text.match(/(\d+)\s*cards/i);
-  return match ? parseInt(match[1]) : null;
+  const patterns = [
+    /(\d+)\/\d+\s*cards/i,          // "60/60 Cards"
+    /expected[:\s]+(\d+)/i,          // "expected: 60"
+    /image\s+shows?\s+(\d+)/i,      // "image shows 60"
+    /should\s+be\s+(\d+)/i,         // "should be 60"
+  ];
+  for (const pat of patterns) {
+    const match = text.match(pat);
+    if (match) {
+      const n = parseInt(match[1]);
+      if (n >= 40 && n <= 100) return n; // reasonable deck size
+    }
+  }
+  return null;
 }
 
 /**
@@ -308,7 +323,7 @@ N Card Name
 
   try {
     const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-opus-4-6",
       max_tokens: 4000,
       messages: [{
         role: "user",
