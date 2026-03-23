@@ -39,6 +39,7 @@ function getArtCropUrl(card: ScryfallCard): string {
 
 interface PageProps {
   params: Promise<{ encoded: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 const COLOR_PIP: Record<string, string> = {
@@ -176,8 +177,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 // Page component (server)
 // ---------------------------------------------------------------------------
 
-export default async function SharedDeckPage({ params }: PageProps) {
+export default async function SharedDeckPage({ params, searchParams }: PageProps) {
   const { encoded } = await params;
+  const query = await searchParams;
+
+  // Fire-and-forget engagement tracking beacon
+  const utm = typeof query.utm === "string" ? query.utm : undefined;
+  if (utm) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : "http://localhost:3000";
+    fetch(`${baseUrl}/api/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ utmId: utm }),
+      cache: "no-store",
+    }).catch(() => {}); // swallow errors — never block rendering
+  }
 
   let deck;
   try {

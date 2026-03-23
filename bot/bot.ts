@@ -25,10 +25,19 @@ import "dotenv/config";
 import fs from "node:fs";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
 import { extractDecklistFromImages } from "./ocr";
-import { encodeDeckUrl, composeReplyText, extractDeckName } from "./encoder";
+import {
+  encodeDeckUrl,
+  composeReplyText,
+  composeReplyTextVariant,
+  selectVariant,
+  encodeDeckUrlWithUtm,
+  extractDeckName,
+} from "./encoder";
 import { fetchCards } from "./scryfall";
 import { deriveDeckStats } from "./stats";
 import { reconcileContext } from "./reconcile";
+import { logInteraction, InteractionLog } from "./interaction-log";
+import { sendTelegramAlert } from "./notify";
 
 const SINCE_ID_FILE = "./since-id.txt";
 const FRESH_START_WINDOW = 5 * 60 * 1000; // 5 minutes
@@ -122,107 +131,216 @@ async function handleMention(
   writer: ReturnType<typeof createClient>["writer"],
   mention: MentionTweet
 ) {
+  const startTime = Date.now();
+  const utmId = crypto.randomUUID();
+  const variant = selectVariant();
+  const errors: Array<{ type: string; message: string }> = [];
+
+  let ocrTimeMs = 0;
+  let scryfallTimeMs = 0;
+  let replyTimeMs = 0;
+  let ocrSuccess = false;
+  let ocrCardsExtracted = 0;
+  let scryfallCardsResolved = 0;
+  let scryfallCardsNotFound: string[] = [];
+  let replySent = false;
+  let replyTweetId: string | undefined;
+  let deckName: string | undefined;
+  let mainboardCount = 0;
+  let sideboardCount = 0;
+
   let decklistText: string | null = null;
 
-  // Step 1: Collect thread context (images + tweet texts)
-  const threadCtx = await collectThreadContext(reader, mention);
-
-  // Step 2: Try text-based decklist detection before image OCR
-  const textDecklist = extractDecklistFromText(mention.text);
-  if (textDecklist) {
-    const lineCount = textDecklist.split("\n").filter((l) => l.trim()).length;
-    console.log(`   📝 Found decklist in text: ${lineCount} lines`);
-    decklistText = textDecklist;
-  } else {
-    if (threadCtx.images.length === 0) {
-      console.log("   ⚠️  No images or decklist found in thread. Skipping.");
-      return;
-    }
-
-    console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
-
-    // Step 3: OCR the images
-    decklistText = await extractDecklistFromImages(threadCtx.images);
-
-    if (!decklistText) {
-      console.log("   ⚠️  No decklist found in images. Skipping.");
-      return;
-    }
-
-    const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
-    console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
-  }
-
-  // Step 4: Enrich with Scryfall data
-  const ocrDeckName = extractDeckName(decklistText);
-  let replyText: string;
-
   try {
-    const cardNames = decklistText
-      .split("\n")
-      .map((l) => l.match(/^\d+\s+(.+)$/)?.[1]?.trim())
-      .filter(Boolean) as string[];
+    // Step 1: Collect thread context (images + tweet texts)
+    const threadCtx = await collectThreadContext(reader, mention);
 
-    const cards = await fetchCards(cardNames);
-
-    // Step 5: Reconcile context — combine tweet text + OCR + card list
-    const ocrAuthor = extractAuthor(decklistText);
-    console.log(`   🔍 Reconciling context (${threadCtx.texts.length} tweet(s))...`);
-    const context = await reconcileContext(threadCtx.texts, ocrDeckName ?? null, ocrAuthor, cardNames);
-
-    const finalName = context.deckName ?? ocrDeckName;
-    if (context.deckName && context.deckName !== ocrDeckName) {
-      console.log(`   📛 Reconciled name: "${context.deckName}" (OCR: "${ocrDeckName ?? "none"}")`);
-    }
-    if (context.hallmarkCard) {
-      console.log(`   ⭐ Hallmark card: ${context.hallmarkCard}`);
-    }
-    if (context.author) {
-      console.log(`   👤 Author: ${context.author}`);
-    }
-
-    // Use hallmark card from reconciliation for stats/OG preview
-    const stats = deriveDeckStats(cards, decklistText, finalName, context.hallmarkCard);
-
-    console.log(`   🎨 Colors: ${stats.colorPips || "(colorless)"}`);
-    console.log(`   📊 ${stats.creatureCount} creatures, ${stats.spellCount} spells, ${stats.landCount} lands`);
-
-    // Inject reconciled name + author into the decklist text for URL encoding
-    if (finalName && !ocrDeckName) {
-      decklistText = `Name: ${finalName}\n${decklistText}`;
-    } else if (finalName && ocrDeckName && finalName !== ocrDeckName) {
-      decklistText = decklistText.replace(/^name[:\s]+.+$/im, `Name: ${finalName}`);
-    }
-    if (context.author && !ocrAuthor) {
-      // Insert author after name line or at top
-      const nameIdx = decklistText.indexOf("\n");
-      if (decklistText.startsWith("Name:") && nameIdx > 0) {
-        decklistText = decklistText.slice(0, nameIdx) + `\nAuthor: ${context.author}` + decklistText.slice(nameIdx);
-      } else {
-        decklistText = `Author: ${context.author}\n${decklistText}`;
+    // Step 2: Try text-based decklist detection before image OCR
+    const ocrStart = Date.now();
+    const textDecklist = extractDecklistFromText(mention.text);
+    if (textDecklist) {
+      const lineCount = textDecklist.split("\n").filter((l) => l.trim()).length;
+      console.log(`   📝 Found decklist in text: ${lineCount} lines`);
+      decklistText = textDecklist;
+      ocrSuccess = true;
+      ocrCardsExtracted = lineCount;
+    } else {
+      if (threadCtx.images.length === 0) {
+        console.log("   ⚠️  No images or decklist found in thread. Skipping.");
+        ocrTimeMs = Date.now() - ocrStart;
+        // Log the skip
+        logInteraction({
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          tweetId: mention.id,
+          authorId: mention.authorId,
+          authorUsername: mention.authorUsername,
+          tweetText: mention.text.slice(0, 280),
+          imageCount: threadCtx.images.length,
+          ocrSuccess: false, ocrPassCount: 0, ocrCardsExtracted: 0,
+          ocrTimeMs, ocrErrors: ["No images or decklist found"],
+          scryfallCardsResolved: 0, scryfallCardsNotFound: [], scryfallTimeMs: 0,
+          replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
+          totalTimeMs: Date.now() - startTime,
+          mainboardCount: 0, sideboardCount: 0, utmId, errors,
+        });
+        return;
       }
+
+      console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
+
+      // Step 3: OCR the images
+      decklistText = await extractDecklistFromImages(threadCtx.images);
+
+      if (!decklistText) {
+        console.log("   ⚠️  No decklist found in images. Skipping.");
+        ocrTimeMs = Date.now() - ocrStart;
+        logInteraction({
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          tweetId: mention.id,
+          authorId: mention.authorId,
+          authorUsername: mention.authorUsername,
+          tweetText: mention.text.slice(0, 280),
+          imageCount: threadCtx.images.length,
+          ocrSuccess: false, ocrPassCount: threadCtx.images.length, ocrCardsExtracted: 0,
+          ocrTimeMs, ocrErrors: ["OCR returned no decklist"],
+          scryfallCardsResolved: 0, scryfallCardsNotFound: [], scryfallTimeMs: 0,
+          replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
+          totalTimeMs: Date.now() - startTime,
+          mainboardCount: 0, sideboardCount: 0, utmId, errors,
+        });
+        return;
+      }
+
+      const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
+      console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
+      ocrSuccess = true;
+      ocrCardsExtracted = lineCount;
+    }
+    ocrTimeMs = Date.now() - ocrStart;
+
+    // Step 4: Enrich with Scryfall data
+    const ocrDeckName = extractDeckName(decklistText);
+    deckName = ocrDeckName;
+    let replyText: string;
+
+    try {
+      const cardNames = decklistText
+        .split("\n")
+        .map((l) => l.match(/^\d+\s+(.+)$/)?.[1]?.trim())
+        .filter(Boolean) as string[];
+
+      const scryfallStart = Date.now();
+      const cards = await fetchCards(cardNames);
+      scryfallTimeMs = Date.now() - scryfallStart;
+
+      scryfallCardsResolved = cards.length;
+      const resolvedNames = new Set(cards.map((c) => c.name.toLowerCase()));
+      scryfallCardsNotFound = cardNames.filter((n) => !resolvedNames.has(n.toLowerCase()));
+
+      // Step 5: Reconcile context — combine tweet text + OCR + card list
+      const ocrAuthor = extractAuthor(decklistText);
+      console.log(`   🔍 Reconciling context (${threadCtx.texts.length} tweet(s))...`);
+      const context = await reconcileContext(threadCtx.texts, ocrDeckName ?? null, ocrAuthor, cardNames);
+
+      const finalName = context.deckName ?? ocrDeckName;
+      deckName = finalName ?? undefined;
+      if (context.deckName && context.deckName !== ocrDeckName) {
+        console.log(`   📛 Reconciled name: "${context.deckName}" (OCR: "${ocrDeckName ?? "none"}")`);
+      }
+      if (context.hallmarkCard) {
+        console.log(`   ⭐ Hallmark card: ${context.hallmarkCard}`);
+      }
+      if (context.author) {
+        console.log(`   👤 Author: ${context.author}`);
+      }
+
+      // Use hallmark card from reconciliation for stats/OG preview
+      const stats = deriveDeckStats(cards, decklistText, finalName, context.hallmarkCard);
+      mainboardCount = stats.mainCount;
+      sideboardCount = stats.sideCount;
+
+      console.log(`   🎨 Colors: ${stats.colorPips || "(colorless)"}`);
+      console.log(`   📊 ${stats.creatureCount} creatures, ${stats.spellCount} spells, ${stats.landCount} lands`);
+
+      // Inject reconciled name + author into the decklist text for URL encoding
+      if (finalName && !ocrDeckName) {
+        decklistText = `Name: ${finalName}\n${decklistText}`;
+      } else if (finalName && ocrDeckName && finalName !== ocrDeckName) {
+        decklistText = decklistText.replace(/^name[:\s]+.+$/im, `Name: ${finalName}`);
+      }
+      if (context.author && !ocrAuthor) {
+        // Insert author after name line or at top
+        const nameIdx = decklistText.indexOf("\n");
+        if (decklistText.startsWith("Name:") && nameIdx > 0) {
+          decklistText = decklistText.slice(0, nameIdx) + `\nAuthor: ${context.author}` + decklistText.slice(nameIdx);
+        } else {
+          decklistText = `Author: ${context.author}\n${decklistText}`;
+        }
+      }
+
+      replyText = composeReplyTextVariant(stats, finalName ?? undefined, variant);
+    } catch (err) {
+      console.error("   ⚠️  Enrichment failed, using basic reply:", err);
+      errors.push({ type: "enrichment", message: String(err) });
+      mainboardCount = decklistText
+        .split("\n")
+        .filter((l) => /^\d+\s/.test(l.trim()))
+        .reduce((sum, l) => sum + parseInt(l.match(/^(\d+)/)?.[1] ?? "0"), 0);
+      replyText = ocrDeckName
+        ? `${ocrDeckName} · ${mainboardCount} cards\n\n▶ View deck →`
+        : `${mainboardCount}-card deck\n\n▶ View deck →`;
     }
 
-    replyText = composeReplyText(stats, finalName ?? undefined);
+    // Step 6: Generate the deck viewer URL and reply
+    const deckUrl = encodeDeckUrlWithUtm(decklistText, DECK_VIEWER_URL, utmId);
+
+    console.log(`   🔗 ${deckUrl}`);
+    console.log(`   📝 ${replyText.split("\n")[0]}`);
+
+    const replyStart = Date.now();
+    replyTweetId = await replyWithLink(writer, mention.id, deckUrl, replyText);
+    replyTimeMs = Date.now() - replyStart;
+    replySent = true;
+    console.log(`   ✅ Replied: https://x.com/i/status/${replyTweetId}\n`);
   } catch (err) {
-    console.error("   ⚠️  Enrichment failed, using basic reply:", err);
-    const mainCount = decklistText
-      .split("\n")
-      .filter((l) => /^\d+\s/.test(l.trim()))
-      .reduce((sum, l) => sum + parseInt(l.match(/^(\d+)/)?.[1] ?? "0"), 0);
-    replyText = ocrDeckName
-      ? `${ocrDeckName} · ${mainCount} cards\n\n▶ View deck →`
-      : `${mainCount}-card deck\n\n▶ View deck →`;
+    errors.push({ type: "handleMention", message: String(err) });
+    console.error(`   ❌ Error in handleMention for ${mention.id}:`, err);
+    sendTelegramAlert(
+      `*Bot Error*\nTweet: ${mention.id}\nAuthor: @${mention.authorUsername}\nError: ${String(err).slice(0, 500)}`
+    );
   }
 
-  // Step 6: Generate the deck viewer URL and reply
-  const deckUrl = encodeDeckUrl(decklistText, DECK_VIEWER_URL);
-
-  console.log(`   🔗 ${deckUrl}`);
-  console.log(`   📝 ${replyText.split("\n")[0]}`);
-
-  const replyId = await replyWithLink(writer, mention.id, deckUrl, replyText);
-  console.log(`   ✅ Replied: https://x.com/i/status/${replyId}\n`);
+  // Log interaction metrics (fire-and-forget)
+  // Note: log rotation for JSONL files > 30 days is handled by the web app side
+  logInteraction({
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    tweetId: mention.id,
+    authorId: mention.authorId,
+    authorUsername: mention.authorUsername,
+    tweetText: mention.text.slice(0, 280),
+    imageCount: 0, // filled from threadCtx above when available
+    ocrSuccess,
+    ocrPassCount: ocrSuccess ? 1 : 0,
+    ocrCardsExtracted,
+    ocrTimeMs,
+    ocrErrors: [],
+    scryfallCardsResolved,
+    scryfallCardsNotFound,
+    scryfallTimeMs,
+    replySent,
+    replyTweetId,
+    replyFormatVariant: variant,
+    replyTimeMs,
+    totalTimeMs: Date.now() - startTime,
+    deckName,
+    mainboardCount,
+    sideboardCount,
+    utmId,
+    errors,
+  });
 }
 
 /**
