@@ -603,12 +603,115 @@ Output as JSON:
 }
 
 // ---------------------------------------------------------------------------
+// Telegram PR Approval — check for MERGE/REJECT replies to open PRs
+// ---------------------------------------------------------------------------
+
+/**
+ * Check for any recent Telegram messages and act on PR commands.
+ *
+ * Supports TWO patterns:
+ *
+ * 1. Swipe-reply to a PR notification message:
+ *    Original: "PR #8: test/deck-exporter — 124 tests passing..."
+ *    Reply: "merge"
+ *
+ * 2. Standalone message with PR number:
+ *    "merge 5", "merge #5", "reject 5", "diff 5"
+ */
+async function checkPendingPRApprovals(): Promise<void> {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
+  console.log("Checking for pending PR approval replies...");
+
+  try {
+    // Get recent updates (non-blocking, 1s timeout)
+    const res = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=1`,
+    );
+    const data = (await res.json()) as any;
+    const updates = data.result || [];
+
+    let maxUpdateId = 0;
+
+    for (const update of updates) {
+      if (update.update_id > maxUpdateId) maxUpdateId = update.update_id;
+
+      const msg = update.message;
+      if (!msg || String(msg.chat?.id) !== TELEGRAM_CHAT_ID) continue;
+
+      const text = (msg.text ?? "").trim();
+      const replyText = msg.reply_to_message?.text ?? "";
+
+      let prNumber: string | null = null;
+      let command: string | null = null;
+
+      // Pattern 1: Swipe-reply to a PR notification
+      const replyPrMatch = replyText.match(/PR\s*#(\d+)/i);
+      if (replyPrMatch) {
+        prNumber = replyPrMatch[1];
+        command = text.toLowerCase();
+      }
+
+      // Pattern 2: Standalone message like "merge 5", "merge #5", "reject #5", "diff 5"
+      if (!prNumber) {
+        const standaloneMatch = text.match(/^(merge|reject|close|cancel|diff|show|view|approve|lgtm|ship|yes|no)\s*#?(\d+)$/i);
+        if (standaloneMatch) {
+          command = standaloneMatch[1].toLowerCase();
+          prNumber = standaloneMatch[2];
+        }
+      }
+
+      if (!prNumber || !command) continue;
+
+      if (command.match(/^(merge|yes|approve|lgtm|ship)$/i)) {
+        console.log(`User approved PR #${prNumber} via Telegram`);
+        try {
+          run(`gh pr merge ${prNumber} --squash`);
+          await sendTelegram(`Merged PR #${prNumber}. Railway will auto-deploy from main.`);
+        } catch (err) {
+          await sendTelegram(`Failed to merge PR #${prNumber}: ${String(err).slice(0, 200)}`);
+        }
+      } else if (command.match(/^(reject|no|close|cancel)$/i)) {
+        console.log(`User rejected PR #${prNumber} via Telegram`);
+        try {
+          run(`gh pr close ${prNumber}`);
+          await sendTelegram(`Closed PR #${prNumber}.`);
+        } catch (err) {
+          await sendTelegram(`Failed to close PR #${prNumber}: ${String(err).slice(0, 200)}`);
+        }
+      } else if (command.match(/^(diff|show|view)$/i)) {
+        console.log(`User requested diff for PR #${prNumber} via Telegram`);
+        try {
+          const diff = run(`gh pr diff ${prNumber} --stat`);
+          const title = run(`gh pr view ${prNumber} --json title -q .title`);
+          await sendTelegram(`PR #${prNumber}: ${title}\n\n${diff.slice(0, 3500)}`);
+        } catch (err) {
+          await sendTelegram(`Failed to fetch PR #${prNumber}: ${String(err).slice(0, 200)}`);
+        }
+      }
+    }
+
+    // Acknowledge processed updates so we don't re-process them
+    if (maxUpdateId > 0) {
+      await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${maxUpdateId + 1}&timeout=1`,
+      );
+    }
+  } catch (err) {
+    console.error("PR approval check failed:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const timestamp = new Date().toISOString();
   console.log(`\n=== Review cron: ${timestamp} ===`);
+
+  // Step 0: Check for pending PR approval replies on Telegram
+  await checkPendingPRApprovals();
 
   // Step 1: Fetch stats
   let stats: StatsResponse;

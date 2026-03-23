@@ -76,6 +76,41 @@ curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6Ne
 - Never auto-merge — create PR and notify, user merges
 - If unsure about a fix, notify on Telegram and skip the fix
 
+### Step 4: Update agent state files
+
+After every run (whether issues were found or not):
+
+1. **Write heartbeat** to `agent-heartbeat.json`:
+   ```
+   // Update the REVIEW timestamp to current ISO time
+   { "REVIEW": "2026-03-23T14:37:00Z" }
+   ```
+
+2. **If you found an issue you CANNOT auto-fix**, append it to `feature-backlog.json`:
+   ```json
+   {
+     "id": "[descriptive-id]",
+     "title": "[what's wrong]",
+     "priority": 1,
+     "type": "fix",
+     "source": "REVIEW-YYYY-MM-DD",
+     "status": "ready",
+     "scope": "small",
+     "verification": {
+       "tests": "[what tests should verify the fix]",
+       "browser": null
+     },
+     "files": ["[affected files]"],
+     "notes": "[diagnostic details from your investigation]"
+   }
+   ```
+   Keep backlog at max 15 items. If full, only add if this issue is higher priority than the lowest item.
+
+3. **Append a one-line entry** to the "Recently Completed" section of `claude-progress.txt`:
+   ```
+   - [YYYY-MM-DD REVIEW] [summary of what was checked/found/fixed]
+   ```
+
 ## Environment
 
 - **Project:** /Users/paulcapriolo/MTG/deck-viewer

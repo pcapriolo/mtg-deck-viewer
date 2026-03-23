@@ -6,3 +6,8 @@ out/
 .env.local
 .vercel
 .gstack/
+
+# Agent state files (local only, not deployed)
+claude-progress.txt
+feature-backlog.json
+agent-heartbeat.json

@@ -39,6 +39,23 @@ Reply: `@mtgviewer`
 - Skip either reply if no good tweet is found.
 - Be respectful — you're a guest in someone's thread.
 
+## After Every Run
+
+1. **Write heartbeat** to `agent-heartbeat.json`:
+   ```
+   // Update the OPERATE timestamp to current ISO time
+   { "OPERATE": "2026-03-23T14:02:00Z" }
+   ```
+
+2. **Append a one-line entry** to the "Recently Completed" section of `claude-progress.txt`:
+   ```
+   - [YYYY-MM-DD OPERATE] [X] replies sent (image: [yes/no], text: [yes/no])
+   ```
+   Or if no tweets found:
+   ```
+   - [YYYY-MM-DD OPERATE] no suitable tweets found
+   ```
+
 ## Environment
 
 - **Your Twitter:** @paulcapriolo

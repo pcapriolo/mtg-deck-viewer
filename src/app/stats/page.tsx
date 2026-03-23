@@ -1,42 +1,114 @@
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
-// Types — matches the shape returned by /api/stats
+// Types — matches the actual shape returned by /api/stats
 // ---------------------------------------------------------------------------
 
-interface StatsRun {
+interface Interaction {
+  id: string;
   timestamp: string;
-  author: string;
+  tweetId: string;
+  authorUsername: string;
+  ocrSuccess: boolean;
+  ocrCardsExtracted: number;
   mainboardCount: number;
-  issues: string[];
-  variant?: string;
-  tweetUrl?: string;
-  latencyMs: number;
-  success: boolean;
+  sideboardCount: number;
+  scryfallCardsNotFound: string[];
+  totalTimeMs: number;
+  replyFormatVariant: string;
+  replySent: boolean;
+  errors: Array<{ type: string; message: string }>;
 }
 
-interface StatsError {
-  type: string;
-  message: string;
-  timestamp: string;
-  tweetUrl?: string;
+interface ApiResponse {
+  interactions: Interaction[];
+  summary: {
+    total: number;
+    successes: number;
+    failures: number;
+    avgTotalTimeMs: number | null;
+    variantDistribution: Record<string, number>;
+  };
 }
 
-interface ABVariant {
-  variant: string;
-  count: number;
-  successRate: number;
-  avgLatencyMs: number;
-}
-
-interface StatsData {
+// Computed view model for rendering
+interface StatsView {
   totalInteractions: number;
   successRate: number;
   avgResponseTimeMs: number;
-  engagementRate: number;
-  recentRuns: StatsRun[];
-  errors: StatsError[];
-  abResults: ABVariant[];
+  recentRuns: {
+    timestamp: string;
+    author: string;
+    mainboardCount: number;
+    issues: string[];
+    variant: string;
+    tweetUrl: string | null;
+    latencyMs: number;
+    success: boolean;
+  }[];
+  errors: {
+    type: string;
+    message: string;
+    timestamp: string;
+    tweetUrl: string | null;
+  }[];
+  abResults: {
+    variant: string;
+    count: number;
+    successRate: number;
+    avgLatencyMs: number;
+  }[];
+}
+
+function transformApiResponse(raw: ApiResponse): StatsView {
+  const { interactions, summary } = raw;
+
+  const recentRuns = interactions.map((ix) => ({
+    timestamp: ix.timestamp,
+    author: ix.authorUsername ?? "unknown",
+    mainboardCount: ix.mainboardCount,
+    issues: ix.errors.map((e) => e.message),
+    variant: ix.replyFormatVariant ?? "-",
+    tweetUrl: ix.tweetId ? `https://x.com/i/status/${ix.tweetId}` : null,
+    latencyMs: ix.totalTimeMs,
+    success: ix.ocrSuccess && ix.replySent,
+  }));
+
+  const errors = interactions
+    .flatMap((ix) =>
+      ix.errors.map((e) => ({
+        type: e.type,
+        message: e.message,
+        timestamp: ix.timestamp,
+        tweetUrl: ix.tweetId ? `https://x.com/i/status/${ix.tweetId}` : null,
+      }))
+    );
+
+  // Compute A/B variant stats
+  const variantMap = new Map<string, { count: number; successes: number; totalMs: number }>();
+  for (const ix of interactions) {
+    const v = ix.replyFormatVariant ?? "base";
+    const entry = variantMap.get(v) ?? { count: 0, successes: 0, totalMs: 0 };
+    entry.count++;
+    if (ix.ocrSuccess && ix.replySent) entry.successes++;
+    entry.totalMs += ix.totalTimeMs;
+    variantMap.set(v, entry);
+  }
+  const abResults = Array.from(variantMap.entries()).map(([variant, v]) => ({
+    variant,
+    count: v.count,
+    successRate: v.count > 0 ? (v.successes / v.count) * 100 : 0,
+    avgLatencyMs: v.count > 0 ? v.totalMs / v.count : 0,
+  }));
+
+  return {
+    totalInteractions: summary.total,
+    successRate: summary.total > 0 ? (summary.successes / summary.total) * 100 : 0,
+    avgResponseTimeMs: summary.avgTotalTimeMs ?? 0,
+    recentRuns,
+    errors,
+    abResults,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +143,7 @@ function formatMs(ms: number): string {
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
-  let data: StatsData | null = null;
+  let data: StatsView | null = null;
 
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN
@@ -83,7 +155,8 @@ export default async function StatsPage() {
     });
 
     if (res.ok) {
-      data = await res.json();
+      const raw: ApiResponse = await res.json();
+      data = transformApiResponse(raw);
     }
   } catch {
     // API not available — show empty state
@@ -114,7 +187,6 @@ export default async function StatsPage() {
     totalInteractions,
     successRate,
     avgResponseTimeMs,
-    engagementRate,
     recentRuns,
     errors,
     abResults,
@@ -165,10 +237,10 @@ export default async function StatsPage() {
 
         <div className="bg-gray-900/80 border border-gray-700/50 rounded-lg p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide">
-            Engagement Rate
+            Errors
           </p>
-          <p className="text-2xl font-bold text-amber-500 mt-1">
-            {engagementRate.toFixed(1)}%
+          <p className={`text-2xl font-bold mt-1 ${errors.length === 0 ? "text-green-400" : "text-red-400"}`}>
+            {errors.length}
           </p>
         </div>
       </div>
