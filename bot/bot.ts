@@ -241,8 +241,8 @@ async function handleMention(
       const cards = await fetchCards(cardNames);
       scryfallTimeMs = Date.now() - scryfallStart;
 
-      scryfallCardsResolved = cards.length;
-      const resolvedNames = new Set(cards.map((c) => c.name.toLowerCase()));
+      scryfallCardsResolved = Object.keys(cards).length;
+      const resolvedNames = new Set(Object.values(cards).map((c) => c.name.toLowerCase()));
       scryfallCardsNotFound = cardNames.filter((n) => !resolvedNames.has(n.toLowerCase()));
 
       // Step 5: Reconcile context — combine tweet text + OCR + card list
