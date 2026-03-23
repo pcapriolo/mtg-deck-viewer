@@ -34,6 +34,9 @@ export interface InteractionLog {
   ocrCorrectionRan: boolean;
   ocrCorrectionAccepted: boolean;
   imageUrl: string | null;
+  // Post-reply cleanup
+  deleted?: boolean;
+  deletedReason?: string;
 }
 
 const DECK_VIEWER_URL = process.env.DECK_VIEWER_URL ?? "http://localhost:3000";

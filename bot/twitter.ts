@@ -179,6 +179,29 @@ export async function replyWithLink(
   return response.data.id;
 }
 
+/**
+ * Delete a tweet by ID. Returns true if deleted (or already gone), false on error.
+ */
+export async function deleteTweet(writer: TwitterApi, tweetId: string): Promise<boolean> {
+  try {
+    await writer.v2.deleteTweet(tweetId);
+    console.log(`🗑️ Deleted tweet ${tweetId}`);
+    return true;
+  } catch (err: any) {
+    const status = err?.code ?? err?.data?.status;
+    if (status === 404) {
+      console.log(`🗑️ Tweet ${tweetId} already gone (404)`);
+      return true;
+    }
+    if (status === 429) {
+      console.warn(`⚠️ Rate limited deleting tweet ${tweetId}`);
+      return false;
+    }
+    console.error(`❌ Failed to delete tweet ${tweetId}:`, err);
+    return false;
+  }
+}
+
 function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) throw new Error(`Missing environment variable: ${key}`);

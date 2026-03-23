@@ -39,6 +39,22 @@ Reply: `@mtgviewer`
 - Skip either reply if no good tweet is found.
 - Be respectful — you're a guest in someone's thread.
 
+## Step 3: Review recent bot replies
+
+Check the last 3 bot replies for quality issues. Read recent entries from `claude-progress.txt` or `/api/stats?hours=24` to find reply tweet IDs.
+
+For each reply:
+1. **Fetch the original tweet** the bot replied to. If it's gone (deleted by the author), delete our reply too.
+2. **Check the deck URL** in the reply — fetch it, verify it returns 200 and isn't an empty deck.
+3. **Spot-check the reply text** — does it say "0-card deck"? Does it contain error text? If so, delete it.
+
+If a reply needs to be deleted:
+- Use `deleteTweet` from `bot/twitter.ts` (available via the Twitter API writer client)
+- Send Telegram: "Deleted reply [link] — [reason]"
+- Note it in `claude-progress.txt`
+
+**Keep this fast:** max 3 replies, max 30 seconds. Skip this step entirely if no replies were sent in the last hour.
+
 ## After Every Run
 
 1. **Write heartbeat** to `agent-heartbeat.json`:

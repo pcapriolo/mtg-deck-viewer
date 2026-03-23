@@ -166,6 +166,7 @@ async function handleMention(
   let mainboardCount = 0;
   let sideboardCount = 0;
 
+  let cardNames: string[] = [];
   let decklistText: string | null = null;
   let ocrResult: OcrResult | null = null;
 
@@ -249,7 +250,7 @@ async function handleMention(
     let replyText: string;
 
     try {
-      const cardNames = decklistText
+      cardNames = decklistText
         .split("\n")
         .map((l) => l.match(/^\d+\s+(.+)$/)?.[1]?.trim())
         .filter(Boolean) as string[];
@@ -316,31 +317,50 @@ async function handleMention(
         : `${mainboardCount}-card deck\n\n▶ View deck →`;
     }
 
-    // Step 6: Generate the deck viewer URL and reply
+    // Step 6: Generate the deck viewer URL
     const deckUrl = encodeDeckUrlWithUtm(decklistText, DECK_VIEWER_URL, utmId);
 
     console.log(`   🔗 ${deckUrl}`);
     console.log(`   📝 ${replyText.split("\n")[0]}`);
 
-    const replyStart = Date.now();
-    replyTweetId = await replyWithLink(writer, mention.id, deckUrl, replyText);
-    replyTimeMs = Date.now() - replyStart;
-    replySent = true;
-    console.log(`   ✅ Replied: https://x.com/i/status/${replyTweetId}\n`);
+    // Step 7: Quality gate — skip reply if deck looks bad
+    const gate = checkReplyQuality({
+      ocrCardsExtracted,
+      scryfallCardsResolved,
+      cardNamesCount: cardNames.length,
+      mainboardCount,
+      deckUrl,
+      expectedBaseUrl: DECK_VIEWER_URL,
+    });
 
-    // Notify on Telegram after every successful reply
-    const deckLabel = deckName ?? `${mainboardCount}-card deck`;
-    const notified = await sendTelegramAlert(
-      `🃏 *Reply sent*\n` +
-      `Deck: ${deckLabel}\n` +
-      `Cards: ${ocrCardsExtracted} extracted, ${scryfallCardsResolved} resolved\n` +
-      `Variant: ${variant}\n` +
-      `Reply: https://x.com/i/status/${replyTweetId}\n` +
-      `Original: https://x.com/i/status/${mention.id}\n` +
-      `Latency: ${((ocrTimeMs + scryfallTimeMs + replyTimeMs) / 1000).toFixed(1)}s`
-    );
-    await trackNotification(notified);
-    if (!notified) console.warn("⚠️ Telegram notification failed for reply", replyTweetId);
+    if (!gate.pass) {
+      console.log(`   ⛔ Quality gate failed: ${gate.reason}. Skipping reply.`);
+      const skipNotified = await sendTelegramAlert(
+        `⛔ *Skipped reply* to @${mention.authorUsername}\nReason: ${gate.reason}\nTweet: https://x.com/i/status/${mention.id}`
+      );
+      await trackNotification(skipNotified);
+    } else {
+      // Step 8: Reply
+      const replyStart = Date.now();
+      replyTweetId = await replyWithLink(writer, mention.id, deckUrl, replyText);
+      replyTimeMs = Date.now() - replyStart;
+      replySent = true;
+      console.log(`   ✅ Replied: https://x.com/i/status/${replyTweetId}\n`);
+
+      // Notify on Telegram after every successful reply
+      const deckLabel = deckName ?? `${mainboardCount}-card deck`;
+      const notified = await sendTelegramAlert(
+        `🃏 *Reply sent*\n` +
+        `Deck: ${deckLabel}\n` +
+        `Cards: ${ocrCardsExtracted} extracted, ${scryfallCardsResolved} resolved\n` +
+        `Variant: ${variant}\n` +
+        `Reply: https://x.com/i/status/${replyTweetId}\n` +
+        `Original: https://x.com/i/status/${mention.id}\n` +
+        `Latency: ${((ocrTimeMs + scryfallTimeMs + replyTimeMs) / 1000).toFixed(1)}s`
+      );
+      await trackNotification(notified);
+      if (!notified) console.warn("⚠️ Telegram notification failed for reply", replyTweetId);
+    }
   } catch (err) {
     errors.push({ type: "handleMention", message: String(err) });
     console.error(`   ❌ Error in handleMention for ${mention.id}:`, err);
@@ -461,6 +481,31 @@ async function collectThreadContext(
   }
 
   return { images, texts };
+}
+
+export function checkReplyQuality(params: {
+  ocrCardsExtracted: number;
+  scryfallCardsResolved: number;
+  cardNamesCount: number;
+  mainboardCount: number;
+  deckUrl: string;
+  expectedBaseUrl: string;
+}): { pass: boolean; reason: string } {
+  try {
+    if (params.ocrCardsExtracted < 3)
+      return { pass: false, reason: `Only ${params.ocrCardsExtracted} card lines extracted (need 3+)` };
+    if (params.scryfallCardsResolved < 3)
+      return { pass: false, reason: `Only ${params.scryfallCardsResolved} cards resolved on Scryfall (need 3+)` };
+    if (params.cardNamesCount > 0 && params.scryfallCardsResolved / params.cardNamesCount < 0.5)
+      return { pass: false, reason: `Only ${Math.round((params.scryfallCardsResolved / params.cardNamesCount) * 100)}% of card names resolved (need 50%+)` };
+    if (params.mainboardCount < 10)
+      return { pass: false, reason: `Only ${params.mainboardCount} mainboard cards (need 10+)` };
+    if (!params.deckUrl.startsWith(params.expectedBaseUrl) || params.deckUrl.length > 2000)
+      return { pass: false, reason: params.deckUrl.length > 2000 ? "Deck URL too long" : "Deck URL has wrong base" };
+    return { pass: true, reason: "ok" };
+  } catch (err) {
+    return { pass: false, reason: `Quality check error: ${err}` };
+  }
 }
 
 function sleep(ms: number): Promise<void> {

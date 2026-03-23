@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractDecklistFromText } from "../bot";
+import { extractDecklistFromText, checkReplyQuality } from "../bot";
 import { summarizeDecklist, composeReplyText, extractDeckName } from "../encoder";
 
 describe("extractDecklistFromText", () => {
@@ -158,5 +158,61 @@ describe("extractDeckName", () => {
 
   it("handles case-insensitive Name/name", () => {
     expect(extractDeckName("name: My Deck\n4 Card")).toBe("My Deck");
+  });
+});
+
+describe("checkReplyQuality", () => {
+  const validParams = {
+    ocrCardsExtracted: 20,
+    scryfallCardsResolved: 18,
+    cardNamesCount: 20,
+    mainboardCount: 60,
+    deckUrl: "https://mtgdeck.app/d/abc123",
+    expectedBaseUrl: "https://mtgdeck.app",
+  };
+
+  it("passes when all checks are good", () => {
+    expect(checkReplyQuality(validParams)).toEqual({ pass: true, reason: "ok" });
+  });
+
+  it("fails when ocrCardsExtracted < 3", () => {
+    const result = checkReplyQuality({ ...validParams, ocrCardsExtracted: 2 });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("card lines extracted");
+  });
+
+  it("fails when scryfallCardsResolved < 3", () => {
+    const result = checkReplyQuality({ ...validParams, scryfallCardsResolved: 1 });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("cards resolved");
+  });
+
+  it("fails when resolution ratio < 50%", () => {
+    const result = checkReplyQuality({ ...validParams, scryfallCardsResolved: 4, cardNamesCount: 20 });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("% of card names resolved");
+  });
+
+  it("fails when mainboardCount < 10", () => {
+    const result = checkReplyQuality({ ...validParams, mainboardCount: 5 });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("mainboard cards");
+  });
+
+  it("fails when URL has wrong base", () => {
+    const result = checkReplyQuality({ ...validParams, deckUrl: "https://wrong.com/d/abc" });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("wrong base");
+  });
+
+  it("fails when URL is too long", () => {
+    const result = checkReplyQuality({ ...validParams, deckUrl: "https://mtgdeck.app/d/" + "x".repeat(2000) });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("too long");
+  });
+
+  it("skips ratio check when cardNamesCount is 0", () => {
+    const result = checkReplyQuality({ ...validParams, cardNamesCount: 0 });
+    expect(result.pass).toBe(true);
   });
 });
