@@ -37,9 +37,9 @@ Read `agent-heartbeat.json` timestamps. Alert if any agent is overdue:
 
 If **any** agent is overdue:
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "⚠️ PLAN: [AGENT] appears stuck or stopped. Last heartbeat: [timestamp]. Check scheduled tasks."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "⚠️ PLAN: [AGENT] appears stuck or stopped. Last heartbeat: [timestamp]. Check scheduled tasks."}'
 ```
 
 If **2+ agents** are overdue, escalate to Critical:
@@ -60,9 +60,9 @@ Alert if any of these are true:
 - `lastPollAt` is stale (> 5 minutes old) → bot process alive but not polling
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "⚠️ PLAN: Bot notification health issue. [describe which check failed and the values]. Check Railway env vars and bot logs."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "⚠️ PLAN: Bot notification health issue. [describe which check failed and the values]. Check Railway env vars and bot logs."}'
 ```
 
 ### 3. ANALYZE
@@ -158,9 +158,9 @@ Include a summary in the daily digest.
 Send a structured Telegram message:
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "📊 DAILY DIGEST — MTG Deck Viewer\n\nHealth: [OK/DEGRADED/DOWN]\nTests: [N] passing (+[delta] this week)\nOCR (24h): [X]% ([Y] interactions)\nOpen PRs: [K]\n\nCompleted today:\n• [list or \"Nothing new\"]\n\nNext priorities:\n1. [top backlog item]\n2. [second item]\n3. [third item]\n\nAgent status:\n• IMPROVE: [active/stale] (last: [time])\n• REVIEW: [active/stale] (last: [time])\n• OPERATE: [active/stale] (last: [time])\n\nNew issues found:\n• [list or \"None\"]\n\n[Weekly retro summary if applicable]"}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "📊 DAILY DIGEST — MTG Deck Viewer\n\nHealth: [OK/DEGRADED/DOWN]\nTests: [N] passing (+[delta] this week)\nOCR (24h): [X]% ([Y] interactions)\nOpen PRs: [K]\n\nCompleted today:\n• [list or \"Nothing new\"]\n\nNext priorities:\n1. [top backlog item]\n2. [second item]\n3. [third item]\n\nAgent status:\n• IMPROVE: [active/stale] (last: [time])\n• REVIEW: [active/stale] (last: [time])\n• OPERATE: [active/stale] (last: [time])\n\nNew issues found:\n• [list or \"None\"]\n\n[Weekly retro summary if applicable]"}'
 ```
 
 If 3+ PRs are pending review, batch the notification:
@@ -198,5 +198,4 @@ If there are 3+ open PRs pending user review, send a single summary. **Include P
 - **Live app:** https://mtg-deck-viewer-production.up.railway.app/
 - **Stats API:** https://mtg-deck-viewer-production.up.railway.app/api/stats
 - **GitHub repo:** https://github.com/pcapriolo/mtg-deck-viewer
-- **Telegram bot token:** 8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60
-- **Telegram chat ID:** 8330350412
+- **Telegram credentials:** Read from `.env.local` — `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`

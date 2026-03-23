@@ -25,9 +25,9 @@ Check for:
 
 If any check fails:
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "⚠️ REVIEW: Bot health issue — [describe what failed and the values]. Check Railway."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "⚠️ REVIEW: Bot health issue — [describe what failed and the values]. Check Railway."}'
 ```
 
 ### Step 2: Check /stats
@@ -48,9 +48,9 @@ Check for:
 If everything looks good, send a Telegram digest and stop:
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "🃏 Hourly review: all clear. [N] interactions, [X]% success rate."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "🃏 Hourly review: all clear. [N] interactions, [X]% success rate."}'
 ```
 
 ### Step 3: Investigate issues
@@ -66,9 +66,9 @@ If quality problems are detected:
 3. Notify on Telegram what you found:
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "⚠️ Quality issue: [description]. Investigating..."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "⚠️ Quality issue: [description]. Investigating..."}'
 ```
 
 ### Step 4: Fix and ship
@@ -83,9 +83,9 @@ If you can fix it:
 6. Notify on Telegram:
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "🔧 PR created: [title]. Tests pass. Waiting for your merge."}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "🔧 PR created: [title]. Tests pass. Waiting for your merge."}'
 ```
 
 7. Do NOT auto-merge. Wait for user to merge.

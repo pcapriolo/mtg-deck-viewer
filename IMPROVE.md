@@ -119,9 +119,9 @@ Update `claude-progress.txt`:
 Send Telegram notification (Action needed tier). **Include the PR number prominently and reply instructions** so the user can merge directly from Telegram:
 
 ```
-curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{"chat_id": "8330350412", "text": "🔨 IMPROVE: PR #[N] — [title]\n\nTests: [X] passing (was [Y])\nQA: [pass/fail]\nReview: [clean/issues found]\nFiles: [list of changed files]\n\nReply to this message:\n• MERGE to approve and merge\n• REJECT to close\n• DIFF to see the changes"}'
+  -d '{"chat_id": "${TELEGRAM_CHAT_ID}", "text": "🔨 IMPROVE: PR #[N] — [title]\n\nTests: [X] passing (was [Y])\nQA: [pass/fail]\nReview: [clean/issues found]\nFiles: [list of changed files]\n\nReply to this message:\n• MERGE to approve and merge\n• REJECT to close\n• DIFF to see the changes"}'
 ```
 
 The user can respond in two ways:
@@ -169,5 +169,4 @@ Ensure working tree is clean.
 - **Project:** /Users/paulcapriolo/MTG/deck-viewer
 - **Live app:** https://mtg-deck-viewer-production.up.railway.app/
 - **Stats API:** https://mtg-deck-viewer-production.up.railway.app/api/stats
-- **Telegram bot token:** 8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60
-- **Telegram chat ID:** 8330350412
+- **Telegram credentials:** Read from `.env.local` — `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
