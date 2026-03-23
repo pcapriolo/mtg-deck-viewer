@@ -24,7 +24,7 @@
 import "dotenv/config";
 import fs from "node:fs";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
-import { extractDecklistFromImages } from "./ocr";
+import { extractDecklistFromImages, OcrResult } from "./ocr";
 import {
   encodeDeckUrl,
   composeReplyText,
@@ -150,6 +150,7 @@ async function handleMention(
   let sideboardCount = 0;
 
   let decklistText: string | null = null;
+  let ocrResult: OcrResult | null = null;
 
   try {
     // Step 1: Collect thread context (images + tweet texts)
@@ -183,6 +184,8 @@ async function handleMention(
           replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
           totalTimeMs: Date.now() - startTime,
           mainboardCount: 0, sideboardCount: 0, utmId, errors,
+          ocrExpectedCount: null, ocrCorrectionRan: false, ocrCorrectionAccepted: false,
+          imageUrl: null,
         });
         return;
       }
@@ -190,9 +193,9 @@ async function handleMention(
       console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
 
       // Step 3: OCR the images
-      decklistText = await extractDecklistFromImages(threadCtx.images);
+      ocrResult = await extractDecklistFromImages(threadCtx.images);
 
-      if (!decklistText) {
+      if (!ocrResult) {
         console.log("   ⚠️  No decklist found in images. Skipping.");
         ocrTimeMs = Date.now() - ocrStart;
         logInteraction({
@@ -209,14 +212,17 @@ async function handleMention(
           replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
           totalTimeMs: Date.now() - startTime,
           mainboardCount: 0, sideboardCount: 0, utmId, errors,
+          ocrExpectedCount: null, ocrCorrectionRan: false, ocrCorrectionAccepted: false,
+          imageUrl: threadCtx.images[0] ?? null,
         });
         return;
       }
 
+      decklistText = ocrResult.decklist;
+      ocrCardsExtracted = ocrResult.actualCount;
       const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
       console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
       ocrSuccess = true;
-      ocrCardsExtracted = lineCount;
     }
     ocrTimeMs = Date.now() - ocrStart;
 
@@ -352,6 +358,10 @@ async function handleMention(
     sideboardCount,
     utmId,
     errors,
+    ocrExpectedCount: ocrResult?.expectedCount ?? null,
+    ocrCorrectionRan: ocrResult?.correctionRan ?? false,
+    ocrCorrectionAccepted: ocrResult?.correctionAccepted ?? false,
+    imageUrl: ocrResult?.imageUrl ?? null,
   });
 }
 

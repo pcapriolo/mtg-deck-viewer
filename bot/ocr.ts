@@ -8,6 +8,16 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
+export interface OcrResult {
+  decklist: string;
+  expectedCount: number | null;
+  actualCount: number;
+  correctionRan: boolean;
+  correctionAccepted: boolean;
+  passCount: number;
+  imageUrl: string;
+}
+
 const EXTRACTION_PROMPT = `You are a Magic: The Gathering decklist extractor. Your ONLY job is to output a decklist. Do NOT explain what you see. Do NOT describe the image. Do NOT add any commentary. Start your response with the first card line immediately.
 
 SCAN THE ENTIRE IMAGE. Look at EVERY column, EVERY row, EVERY panel. Common layouts:
@@ -175,7 +185,7 @@ async function fetchImageAsBase64(imageUrl: string): Promise<{
  * Pass 2: Eval — verify against the image and fix errors.
  * Returns the cleaned decklist text, or null if the image isn't a decklist.
  */
-export async function extractDecklistFromImage(imageUrl: string): Promise<string | null> {
+export async function extractDecklistFromImage(imageUrl: string): Promise<OcrResult | null> {
   const anthropic = getClient();
   const { base64, mediaType } = await fetchImageAsBase64(imageUrl);
 
@@ -211,6 +221,8 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
   const firstPass = cleanResponse(extractText);
   if (!firstPass) return null;
 
+  let passCount = 1;
+
   // Pass 2: Eval — verify against the image
   const evalPrompt = EVAL_PROMPT.replace("{decklist}", firstPass);
 
@@ -236,6 +248,7 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
 
   const secondPass = cleanResponse(evalText);
   let result = secondPass.length > 0 ? secondPass : firstPass;
+  passCount = 2;
 
   // Pass 3 (conditional): Count correction
   // Check all text sources for an expected count (e.g., "60/60 Cards")
@@ -243,7 +256,11 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
     ?? extractExpectedCount(evalText)
     ?? extractExpectedCount(firstPass);
   const actualCount = countCards(result);
+  let correctionRan = false;
+  let correctionAccepted = false;
   if (expectedCount && actualCount !== expectedCount) {
+    correctionRan = true;
+    passCount = 3;
     console.log(`   ⚠️  Count mismatch: got ${actualCount}, expected ${expectedCount}. Running correction pass...`);
     const corrected = await correctCountMismatch(anthropic, imageSource, result, actualCount, expectedCount);
     if (corrected) {
@@ -251,6 +268,7 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
       console.log(`   📊 Correction pass result: ${correctedCount} cards (was ${actualCount}, target ${expectedCount})`);
       if (Math.abs(correctedCount - expectedCount) < Math.abs(actualCount - expectedCount)) {
         result = corrected;
+        correctionAccepted = true;
         console.log(`   ✅ Accepted correction: ${actualCount} → ${correctedCount}`);
       } else {
         console.log(`   ❌ Rejected correction (${correctedCount} not closer to ${expectedCount} than ${actualCount})`);
@@ -260,7 +278,16 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
     }
   }
 
-  return mergeSplitCards(result);
+  const finalDecklist = await mergeSplitCards(result);
+  return {
+    decklist: finalDecklist,
+    expectedCount,
+    actualCount: countCards(finalDecklist),
+    correctionRan,
+    correctionAccepted,
+    passCount,
+    imageUrl,
+  };
 }
 
 /**
@@ -445,7 +472,7 @@ async function mergeSplitCards(decklist: string): Promise<string> {
  * Try to extract a decklist from multiple image URLs.
  * Returns the first successful extraction, or null.
  */
-export async function extractDecklistFromImages(imageUrls: string[]): Promise<string | null> {
+export async function extractDecklistFromImages(imageUrls: string[]): Promise<OcrResult | null> {
   for (const url of imageUrls) {
     try {
       const result = await extractDecklistFromImage(url);

@@ -29,6 +29,11 @@ export interface InteractionLog {
   sideboardCount: number;
   utmId: string;
   errors: Array<{ type: string; message: string }>;
+  // OCR quality metadata
+  ocrExpectedCount: number | null;
+  ocrCorrectionRan: boolean;
+  ocrCorrectionAccepted: boolean;
+  imageUrl: string | null;
 }
 
 const DECK_VIEWER_URL = process.env.DECK_VIEWER_URL ?? "http://localhost:3000";

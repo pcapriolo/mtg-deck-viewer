@@ -77,6 +77,11 @@ export interface InteractionLog {
   ocrTimeMs?: number;
   variant?: string;
   error?: string;
+  // OCR quality metadata
+  ocrExpectedCount?: number | null;
+  ocrCorrectionRan?: boolean;
+  ocrCorrectionAccepted?: boolean;
+  imageUrl?: string | null;
   [key: string]: unknown;
 }
 
