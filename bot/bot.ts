@@ -304,6 +304,18 @@ async function handleMention(
     replyTimeMs = Date.now() - replyStart;
     replySent = true;
     console.log(`   ✅ Replied: https://x.com/i/status/${replyTweetId}\n`);
+
+    // Notify on Telegram after every successful reply
+    const deckLabel = deckName ?? `${mainboardCount}-card deck`;
+    sendTelegramAlert(
+      `🃏 *Reply sent*\n` +
+      `Deck: ${deckLabel}\n` +
+      `Cards: ${ocrCardsExtracted} extracted, ${scryfallCardsResolved} resolved\n` +
+      `Variant: ${variant}\n` +
+      `Reply: https://x.com/i/status/${replyTweetId}\n` +
+      `Original: https://x.com/i/status/${mention.id}\n` +
+      `Latency: ${((ocrTimeMs + scryfallTimeMs + replyTimeMs) / 1000).toFixed(1)}s`
+    );
   } catch (err) {
     errors.push({ type: "handleMention", message: String(err) });
     console.error(`   ❌ Error in handleMention for ${mention.id}:`, err);
