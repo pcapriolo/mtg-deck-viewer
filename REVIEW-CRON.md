@@ -8,7 +8,29 @@ Run as a Claude Code scheduled task every 60 minutes (offset from the reply task
 
 Review the bot's recent performance on /stats. If quality issues are found, investigate, fix, and notify on Telegram.
 
-### Step 1: Check /stats
+### Step 1: Check bot health
+
+Fetch the bot's live health status:
+
+```
+curl -s "https://mtg-deck-viewer-production.up.railway.app/api/bot-health"
+```
+
+Check for:
+- **`status` is `"unreachable"`** — bot process is down. Alert immediately.
+- **`telegramConfigured` is `false`** — Telegram env vars missing on Railway. Alert immediately.
+- **`lastPollAt` is stale (> 5 minutes old)** — bot alive but not polling. Alert.
+- **`notificationFailCount` > 0** — notifications are failing. Alert with the count.
+- **`lastNotificationSuccess` is `null` and `uptime` > 600** — bot has been up 10+ minutes without a single successful notification. Alert.
+
+If any check fails:
+```
+curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6NeyYVvWdfdg60/sendMessage" \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id": "8330350412", "text": "⚠️ REVIEW: Bot health issue — [describe what failed and the values]. Check Railway."}'
+```
+
+### Step 2: Check /stats
 
 Fetch the last hour's metrics:
 
@@ -31,7 +53,7 @@ curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6Ne
   -d '{"chat_id": "8330350412", "text": "🃏 Hourly review: all clear. [N] interactions, [X]% success rate."}'
 ```
 
-### Step 2: Investigate issues
+### Step 3: Investigate issues
 
 If quality problems are detected:
 
@@ -49,7 +71,7 @@ curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6Ne
   -d '{"chat_id": "8330350412", "text": "⚠️ Quality issue: [description]. Investigating..."}'
 ```
 
-### Step 3: Fix and ship
+### Step 4: Fix and ship
 
 If you can fix it:
 
@@ -76,7 +98,7 @@ curl -s -X POST "https://api.telegram.org/bot8025145649:AAEnGq9m15OG2-w4GNMWO6Ne
 - Never auto-merge — create PR and notify, user merges
 - If unsure about a fix, notify on Telegram and skip the fix
 
-### Step 4: Update agent state files
+### Step 5: Update agent state files
 
 After every run (whether issues were found or not):
 
