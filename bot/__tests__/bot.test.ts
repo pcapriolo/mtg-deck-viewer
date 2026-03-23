@@ -47,6 +47,37 @@ describe("extractDecklistFromText", () => {
   it("returns null for empty string", () => {
     expect(extractDecklistFromText("")).toBeNull();
   });
+
+  it("preserves Sideboard header so mainboard and sideboard are separated", () => {
+    const text =
+      "4 Stormchaser's Talent\n4 Fatal Push\n4 Hopeless Nightmare\n" +
+      "Sideboard\n4 Thoughtseize\n3 Duress\n2 Negate";
+    const result = extractDecklistFromText(text);
+    expect(result).not.toBeNull();
+    expect(result).toContain("Sideboard");
+    // Mainboard lines should come before Sideboard
+    const sbIndex = result!.indexOf("Sideboard");
+    const firstCardIndex = result!.indexOf("4 Stormchaser");
+    expect(firstCardIndex).toBeLessThan(sbIndex);
+  });
+
+  it("preserves Name: and Author: metadata lines", () => {
+    const text =
+      "Name: Bouncing Shredder\nAuthor: infernoman64\n" +
+      "4 Fatal Push\n4 Hopeless Nightmare\n4 Stock Up";
+    const result = extractDecklistFromText(text);
+    expect(result).not.toBeNull();
+    expect(result).toContain("Name: Bouncing Shredder");
+    expect(result).toContain("Author: infernoman64");
+  });
+
+  it("preserves Companion and Commander headers", () => {
+    const text =
+      "Companion\n1 Lurrus of the Dream-Den\n" +
+      "4 Lightning Bolt\n4 Counterspell\n2 Snapcaster Mage";
+    const result = extractDecklistFromText(text);
+    expect(result).toContain("Companion");
+  });
 });
 
 describe("summarizeDecklist", () => {
