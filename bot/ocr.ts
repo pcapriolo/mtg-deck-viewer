@@ -34,6 +34,14 @@ For EVERY card:
 5. NEVER guess quantities from context, card type, or what decks usually run.
 6. Basic lands CAN have 5+ copies — read their badge carefully.
 
+LAND COLUMN — EXTRA CARE:
+The rightmost column in deck builder layouts contains lands. These cards are often
+displayed smaller with less visible badges. Read each land's badge THREE times.
+Common land badge misreads:
+- Reading x3 when the badge says x1 (single Mountain/Forest with no stack)
+- Reading x1 when the badge says x3 or x5 (missing a clearly visible badge)
+- Missing the badge on the bottom card in the column
+
 DOUBLE-FACED CARDS (DFC / SPLIT CARDS / TRANSFORM):
 - Some cards show BOTH faces in the image (front + back). Only count them ONCE using the FRONT face name.
 - DFC back faces may appear rotated sideways or adjacent to their front face. Do NOT count them as separate cards.
@@ -65,38 +73,33 @@ Sideboard
 N Card Name
 ...`;
 
-const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. Verify the extracted decklist against the image.
+const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. Verify EACH card individually against the image.
 
 EXTRACTED DECKLIST:
 {decklist}
 
-VERIFICATION STEPS (do all of these):
+STEP 1 — PER-CARD VERIFICATION:
+For EACH card in the decklist, examine the image and report:
+- Card: [name] | Badge: [what the badge says, e.g., "x4", "x3", or "none"] | Stack: [single/short/tall] | Extracted: [N] | Correct: [N]
 
-1. QUANTITY CHECK: For EVERY card, look at its badge in the image. Does the extracted quantity match the visible badge? Re-read each badge carefully. Common errors: reading x3 as x4, missing a badge entirely (defaulting to 1 when badge says x4), or inventing a quantity that has no badge.
+Pay EXTRA attention to the LAND COLUMN (rightmost). Lands are the #1 source of misreads.
+Read each land badge THREE times before reporting.
 
-2. LEGALITY: No non-basic card can have more than 4 copies. Basic lands (Plains, Island, Swamp, Mountain, Forest) CAN exceed 4.
+STEP 2 — MISSING CARDS:
+Scan every column left to right. Any card in the image NOT in the decklist?
 
-3. DOUBLE-FACED / SPLIT CARDS: If both faces of a card appear, count only once. Merge into "Front // Back" format.
+STEP 3 — ARITHMETIC:
+SUM: N1+N2+N3+...=TOTAL (expected: [count from image header, e.g., 60])
+If TOTAL ≠ expected, your per-card verification has an error. Re-examine the cards where your "Correct" differs from "Extracted" and fix.
 
-4. MISSING CARDS: Scan every column left to right, top to bottom. Any card visible in the image but NOT in the decklist? Check: inter-column cards, bottom cards in each column, all lands.
+STEP 4 — NAME CHECK:
+Any misspelled names? Common errors: dropped letters, swapped letters.
 
-5. CARD COUNT — MANDATORY ARITHMETIC:
-   Write out the sum of all mainboard quantities: N1 + N2 + N3 + ... = TOTAL.
-   If the image shows a card count (e.g., "60/60 Cards"), your TOTAL must match.
-   If TOTAL ≠ image count, you MUST find every discrepancy and fix it.
-   Do NOT output a decklist where your sum does not match the image count.
+STEP 5 — DFC/SPLIT:
+Any double-faced or split cards listed as two entries? Merge to one.
 
-6. SIDEBOARD: If the image has a sideboard panel, verify every entry is captured.
-
-7. NAME ACCURACY: Check each card name against the title bar in the image. Common OCR errors: dropped letters ("Llanwar" should be "Llanowar"), swapped letters ("Starting" should be "Starring"), wrong vowels. If a name looks almost-right but slightly off, correct it to match the card title exactly as printed.
-
-8. DECK NAME & AUTHOR: Preserve if they match the image. Remove if hallucinated.
-
-OUTPUT FORMAT:
-First, write your arithmetic sum (this line will be stripped):
-SUM: N1+N2+N3+...=TOTAL (expected: IMAGE_COUNT)
-
-Then output the corrected decklist (or original if no errors):
+OUTPUT (after all verification above):
+The corrected decklist only — no analysis, no commentary:
 N Card Name
 ...
 Sideboard
@@ -245,10 +248,15 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<string
     const corrected = await correctCountMismatch(anthropic, imageSource, result, actualCount, expectedCount);
     if (corrected) {
       const correctedCount = countCards(corrected);
+      console.log(`   📊 Correction pass result: ${correctedCount} cards (was ${actualCount}, target ${expectedCount})`);
       if (Math.abs(correctedCount - expectedCount) < Math.abs(actualCount - expectedCount)) {
         result = corrected;
-        console.log(`   ✅ Correction pass: ${actualCount} → ${correctedCount} cards`);
+        console.log(`   ✅ Accepted correction: ${actualCount} → ${correctedCount}`);
+      } else {
+        console.log(`   ❌ Rejected correction (${correctedCount} not closer to ${expectedCount} than ${actualCount})`);
       }
+    } else {
+      console.log(`   ❌ Correction pass returned null`);
     }
   }
 
@@ -306,18 +314,23 @@ async function correctCountMismatch(
   const diff = expectedCount - actualCount;
   const direction = diff > 0 ? "MISSING" : "EXTRA";
 
-  const prompt = `The decklist below has ${actualCount} mainboard cards but the image shows ${expectedCount}. That means ${Math.abs(diff)} cards are ${direction}.
+  const prompt = `PROBLEM: This decklist has ${actualCount} mainboard cards but the image shows ${expectedCount}. There are ${Math.abs(diff)} ${direction.toLowerCase()} cards.
 
 CURRENT DECKLIST:
 ${decklist}
 
-Look at EVERY card's quantity badge in the image and compare to the decklist. Find the ${Math.abs(diff)} ${direction.toLowerCase()} cards.
-- For each card, re-read its badge from the image.
-- If the badge says x4 but the decklist says 1, fix it.
-- If the badge says x2 but the decklist says 4, fix it.
-- Check basic lands especially — they can have 5+ copies.
+TASK: Find which cards have wrong quantities.
 
-Output the CORRECTED decklist only (no explanation):
+For EACH card in the decklist, examine its badge in the image ONE AT A TIME:
+- [Card Name]: badge says [x?], decklist says [N], ${actualCount > expectedCount ? "reduce" : "increase"} if wrong
+
+Focus especially on LANDS (rightmost column) — they are the most commonly misread.
+Basic lands (Mountain, Forest, etc.) can have any quantity including 1 or 5+.
+
+After checking every card, verify your corrected total equals ${expectedCount}.
+If it doesn't, re-examine until it does.
+
+Output ONLY the corrected decklist:
 N Card Name
 ...`;
 
