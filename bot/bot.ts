@@ -388,9 +388,17 @@ export function extractDecklistFromText(text: string): string | null {
     .trim();
 
   const lines = cleaned.split("\n").map((l) => l.trim()).filter((l) => l);
-  const deckLines = lines.filter((l) => /^\d+x?\s+\w/i.test(l));
 
-  if (deckLines.length < 3) return null;
+  // Keep card lines AND section headers (Sideboard, Side, Companion, Commander, Name, Author)
+  const deckLines = lines.filter((l) =>
+    /^\d+x?\s+\w/i.test(l) ||
+    /^(sideboard|side|companion|commander)$/i.test(l) ||
+    /^(name|author)[:\s]/i.test(l)
+  );
+
+  // Need at least 3 card lines (not counting headers)
+  const cardCount = deckLines.filter((l) => /^\d+x?\s+\w/i.test(l)).length;
+  if (cardCount < 3) return null;
 
   return deckLines.join("\n");
 }
