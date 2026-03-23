@@ -51,6 +51,22 @@ const MAX_CHAIN_DEPTH = 5; // How far up the reply chain to look for images
 const processed = new Set<string>();
 let sinceId: string | undefined;
 
+// Health counters — exposed via the health server
+const startedAt = new Date().toISOString();
+let lastPollAt: string | null = null;
+let lastNotificationAttempt: string | null = null;
+let lastNotificationSuccess: string | null = null;
+let notificationFailCount = 0;
+
+async function trackNotification(result: boolean): Promise<void> {
+  lastNotificationAttempt = new Date().toISOString();
+  if (result) {
+    lastNotificationSuccess = lastNotificationAttempt;
+  } else {
+    notificationFailCount++;
+  }
+}
+
 async function main() {
   console.log("🃏 MTG Deck Viewer Bot starting...");
   console.log(`   Viewer URL: ${DECK_VIEWER_URL}`);
@@ -90,6 +106,7 @@ async function main() {
 }
 
 async function poll(reader: ReturnType<typeof createClient>["reader"], writer: ReturnType<typeof createClient>["writer"]) {
+  lastPollAt = new Date().toISOString();
   const isFreshStart = sinceId === undefined;
   const mentions = await fetchMentions(reader, BOT_USER_ID, sinceId);
 
@@ -313,7 +330,7 @@ async function handleMention(
 
     // Notify on Telegram after every successful reply
     const deckLabel = deckName ?? `${mainboardCount}-card deck`;
-    sendTelegramAlert(
+    const notified = await sendTelegramAlert(
       `🃏 *Reply sent*\n` +
       `Deck: ${deckLabel}\n` +
       `Cards: ${ocrCardsExtracted} extracted, ${scryfallCardsResolved} resolved\n` +
@@ -322,12 +339,16 @@ async function handleMention(
       `Original: https://x.com/i/status/${mention.id}\n` +
       `Latency: ${((ocrTimeMs + scryfallTimeMs + replyTimeMs) / 1000).toFixed(1)}s`
     );
+    await trackNotification(notified);
+    if (!notified) console.warn("⚠️ Telegram notification failed for reply", replyTweetId);
   } catch (err) {
     errors.push({ type: "handleMention", message: String(err) });
     console.error(`   ❌ Error in handleMention for ${mention.id}:`, err);
-    sendTelegramAlert(
+    const errNotified = await sendTelegramAlert(
       `*Bot Error*\nTweet: ${mention.id}\nAuthor: @${mention.authorUsername}\nError: ${String(err).slice(0, 500)}`
     );
+    await trackNotification(errNotified);
+    if (!errNotified) console.warn("⚠️ Telegram error notification also failed for", mention.id);
   }
 
   // Log interaction metrics (fire-and-forget)
@@ -453,8 +474,18 @@ const PORT = process.env.PORT ?? "3001";
 function startHealthServer() {
   http
     .createServer((_req, res) => {
-      res.writeHead(200);
-      res.end("ok");
+      const payload = {
+        status: "ok",
+        startedAt,
+        uptime: process.uptime(),
+        lastPollAt,
+        lastNotificationAttempt,
+        lastNotificationSuccess,
+        notificationFailCount,
+        telegramConfigured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
     })
     .listen(parseInt(PORT), () => {
       console.log(`   Health endpoint on :${PORT}`);

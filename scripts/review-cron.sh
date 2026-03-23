@@ -6,4 +6,5 @@
 #   37 * * * * /Users/paulcapriolo/MTG/deck-viewer/scripts/review-cron.sh >> /tmp/mtg-review-cron.log 2>&1
 
 cd /Users/paulcapriolo/MTG/deck-viewer
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 npx tsx scripts/review-cron.ts

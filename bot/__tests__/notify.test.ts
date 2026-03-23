@@ -20,9 +20,10 @@ describe("sendTelegramAlert", () => {
     process.env.TELEGRAM_CHAT_ID = originalEnv.TELEGRAM_CHAT_ID;
   });
 
-  it("sends message via Telegram API", async () => {
-    await sendTelegramAlert("Test alert");
+  it("sends message via Telegram API and returns true", async () => {
+    const result = await sendTelegramAlert("Test alert");
 
+    expect(result).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, opts] = mockFetch.mock.calls[0];
     expect(url).toBe("https://api.telegram.org/bottest-token/sendMessage");
@@ -32,9 +33,9 @@ describe("sendTelegramAlert", () => {
     expect(body.text).toBe("Test alert");
   });
 
-  it("handles API error gracefully (no throw)", async () => {
+  it("handles API error gracefully (no throw, returns false)", async () => {
     mockFetch.mockRejectedValue(new Error("API error"));
-    await expect(sendTelegramAlert("Test")).resolves.toBeUndefined();
+    await expect(sendTelegramAlert("Test")).resolves.toBe(false);
   });
 
   it("truncates messages > 4096 chars", async () => {
@@ -46,15 +47,17 @@ describe("sendTelegramAlert", () => {
     expect(body.text).toContain("...(truncated)");
   });
 
-  it("silently returns when TELEGRAM_BOT_TOKEN missing", async () => {
+  it("returns false and warns when TELEGRAM_BOT_TOKEN missing", async () => {
     delete process.env.TELEGRAM_BOT_TOKEN;
-    await sendTelegramAlert("Test");
+    const result = await sendTelegramAlert("Test");
+    expect(result).toBe(false);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("silently returns when TELEGRAM_CHAT_ID missing", async () => {
+  it("returns false and warns when TELEGRAM_CHAT_ID missing", async () => {
     delete process.env.TELEGRAM_CHAT_ID;
-    await sendTelegramAlert("Test");
+    const result = await sendTelegramAlert("Test");
+    expect(result).toBe(false);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
