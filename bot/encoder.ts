@@ -67,6 +67,64 @@ export function extractDeckName(text: string): string | undefined {
   return undefined;
 }
 
+/**
+ * A/B variant of composeReplyText — extends the base format with optional pricing.
+ *
+ * Variants:
+ *   "base"       — identical to composeReplyText
+ *   "with_price" — appends " · $X.XX" after card count (requires stats.totalPrice)
+ *
+ * Falls back to "base" if the result would exceed 280 chars.
+ */
+export function composeReplyTextVariant(
+  stats: { mainCount: number; sideCount: number; colorPips: string; totalPrice?: number },
+  deckName?: string,
+  variant?: string
+): string {
+  const chosen = variant ?? selectVariant();
+
+  if (chosen === "with_price" && stats.totalPrice != null) {
+    const priceStr = `$${stats.totalPrice.toFixed(2)}`;
+    const lines: string[] = [];
+
+    if (deckName) {
+      const truncatedName = deckName.length > 50 ? deckName.slice(0, 47) + "..." : deckName;
+      lines.push(`${truncatedName} · ${stats.mainCount} cards · ${priceStr}`);
+    } else {
+      lines.push(`${stats.mainCount}-card deck · ${priceStr}`);
+    }
+
+    if (stats.colorPips) lines.push(stats.colorPips);
+    lines.push("");
+    lines.push("▶ View deck →");
+
+    const result = lines.join("\n");
+    // Fall back to base if exceeds 280 chars (accounting for URL placeholder)
+    if (result.length > 280) {
+      return composeReplyText(stats, deckName);
+    }
+    return result;
+  }
+
+  return composeReplyText(stats, deckName);
+}
+
+/** Returns a random variant name for A/B testing. */
+export function selectVariant(): string {
+  const variants = ["base", "with_price"];
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
+/** Like encodeDeckUrl but appends a UTM tracking parameter. */
+export function encodeDeckUrlWithUtm(
+  decklistText: string,
+  baseUrl: string,
+  utmId: string
+): string {
+  const url = encodeDeckUrl(decklistText, baseUrl);
+  return `${url}?utm=bot-${utmId}`;
+}
+
 /** Legacy compat — simple summary without stats */
 export function summarizeDecklist(text: string): string {
   const lines = text.split("\n").filter((l) => l.trim());
