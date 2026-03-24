@@ -802,6 +802,16 @@ async function main(): Promise<void> {
     );
   }
 
+  // Write heartbeat so the status dashboard and PLAN agent know REVIEW is alive
+  try {
+    const hbPath = "./agent-heartbeat.json";
+    const hb = fs.existsSync(hbPath) ? JSON.parse(fs.readFileSync(hbPath, "utf-8")) : {};
+    hb.REVIEW = new Date().toISOString();
+    fs.writeFileSync(hbPath, JSON.stringify(hb, null, 2));
+  } catch (e) {
+    console.error("Failed to write heartbeat:", e);
+  }
+
   console.log("Done.");
 }
 

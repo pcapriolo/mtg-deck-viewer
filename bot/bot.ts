@@ -232,10 +232,12 @@ async function handleMention(
   let cardNames: string[] = [];
   let decklistText: string | null = null;
   let ocrResult: OcrResult | null = null;
+  let imageCount = 0;
 
   try {
     // Step 1: Collect thread context (images + tweet texts)
     const threadCtx = await collectThreadContext(reader, mention);
+    imageCount = threadCtx.images.length;
 
     // Step 2: Try text-based decklist detection before image OCR
     const ocrStart = Date.now();
@@ -464,7 +466,7 @@ async function handleMention(
     authorId: mention.authorId,
     authorUsername: mention.authorUsername,
     tweetText: mention.text.slice(0, 280),
-    imageCount: 0, // filled from threadCtx above when available
+    imageCount,
     ocrSuccess,
     ocrPassCount: ocrSuccess ? 1 : 0,
     ocrCardsExtracted,

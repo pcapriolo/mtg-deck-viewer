@@ -128,7 +128,7 @@ function getClient(): Anthropic {
 /**
  * Strip any commentary/preamble that Claude might add before the decklist.
  */
-function cleanResponse(text: string): string {
+export function cleanResponse(text: string): string {
   const lines = text.split("\n");
 
   // Find the first meaningful line (Name/Author metadata or card line)
@@ -294,7 +294,7 @@ export async function extractDecklistFromImage(imageUrl: string): Promise<OcrRes
  * Extract expected card count from text like "60/60 Cards", "60 Cards",
  * "expected: 60", or "image shows 60".
  */
-function extractExpectedCount(text: string): number | null {
+export function extractExpectedCount(text: string): number | null {
   const patterns = [
     /(\d+)\/\d+\s*cards/i,          // "60/60 Cards"
     /expected[:\s]+(\d+)/i,          // "expected: 60"
@@ -314,7 +314,7 @@ function extractExpectedCount(text: string): number | null {
 /**
  * Count total cards in a decklist string.
  */
-function countCards(decklist: string): number {
+export function countCards(decklist: string): number {
   let total = 0;
   let inSideboard = false;
   for (const line of decklist.split("\n")) {
