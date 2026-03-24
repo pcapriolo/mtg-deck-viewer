@@ -57,6 +57,8 @@ let lastPollAt: string | null = null;
 let lastNotificationAttempt: string | null = null;
 let lastNotificationSuccess: string | null = null;
 let notificationFailCount = 0;
+let pollCount = 0;
+let lastExitReason: string | null = null;
 
 async function trackNotification(result: boolean): Promise<void> {
   lastNotificationAttempt = new Date().toISOString();
@@ -66,6 +68,41 @@ async function trackNotification(result: boolean): Promise<void> {
     notificationFailCount++;
   }
 }
+
+// --- Crash logging: catch every way a Node process can die ---
+
+process.on("uncaughtException", async (err) => {
+  console.error("💀 UNCAUGHT EXCEPTION:", err);
+  lastExitReason = `uncaughtException: ${err.message}`;
+  await sendTelegramAlert(
+    `🚨 *Bot crashed* (uncaughtException)\n\`\`\`\n${String(err.stack ?? err).slice(0, 1000)}\n\`\`\`\nPolls completed: ${pollCount}\nUptime: ${Math.round(process.uptime())}s`
+  ).catch(() => {});
+  process.exit(1);
+});
+
+process.on("unhandledRejection", async (reason) => {
+  console.error("💀 UNHANDLED REJECTION:", reason);
+  lastExitReason = `unhandledRejection: ${String(reason)}`;
+  await sendTelegramAlert(
+    `🚨 *Bot crashed* (unhandledRejection)\n\`\`\`\n${String(reason).slice(0, 1000)}\n\`\`\`\nPolls completed: ${pollCount}\nUptime: ${Math.round(process.uptime())}s`
+  ).catch(() => {});
+  process.exit(1);
+});
+
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+  process.on(signal, async () => {
+    console.error(`💀 Received ${signal} — shutting down`);
+    lastExitReason = signal;
+    await sendTelegramAlert(
+      `⚠️ *Bot shutting down* (${signal})\nPolls completed: ${pollCount}\nUptime: ${Math.round(process.uptime())}s\nLast poll: ${lastPollAt ?? "never"}`
+    ).catch(() => {});
+    process.exit(0);
+  });
+}
+
+process.on("beforeExit", (code) => {
+  console.error(`💀 beforeExit with code ${code} — event loop drained unexpectedly`);
+});
 
 async function main() {
   console.log("🃏 MTG Deck Viewer Bot starting...");
@@ -95,11 +132,37 @@ async function main() {
 
   console.log("   Polling for mentions...\n");
 
+  // Periodic heartbeat — logs memory/uptime every 30s so we can see what happens before a kill
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    console.log(
+      `   💓 heartbeat | uptime=${Math.round(process.uptime())}s polls=${pollCount} rss=${Math.round(mem.rss / 1024 / 1024)}MB heap=${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB`
+    );
+  }, 30_000);
+
+  // Notify on Telegram that bot started successfully
+  console.log("   Sending startup Telegram notification...");
+  const startNotified = await sendTelegramAlert(
+    `✅ *Bot started*\nViewer: ${DECK_VIEWER_URL}\nPoll interval: ${POLL_INTERVAL / 1000}s\nsinceId: ${sinceId ?? "none (fresh start)"}\nMemory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`
+  );
+  await trackNotification(startNotified);
+  console.log(`   Telegram startup notification: ${startNotified ? "sent" : "FAILED"}`);
+
   while (true) {
     try {
+      console.log(`   🔄 Poll #${pollCount + 1} starting...`);
       await poll(reader, writer);
+      pollCount++;
+      console.log(`   ✅ Poll #${pollCount} done. Mentions processed: ${processed.size}`);
     } catch (err) {
-      console.error("Poll error:", err);
+      pollCount++;
+      console.error(`   ❌ Poll #${pollCount} error:`, err);
+      // Notify on repeated failures
+      if (pollCount % 5 === 0) {
+        await sendTelegramAlert(
+          `⚠️ *Poll error* at poll #${pollCount}\n\`\`\`\n${String(err).slice(0, 500)}\n\`\`\`\nUptime: ${Math.round(process.uptime())}s`
+        ).catch(() => {});
+      }
     }
     await sleep(POLL_INTERVAL);
   }
@@ -184,9 +247,25 @@ async function handleMention(
       ocrSuccess = true;
       ocrCardsExtracted = lineCount;
     } else {
-      if (threadCtx.images.length === 0) {
+      // Try text decklist in parent tweets
+      for (const threadText of threadCtx.texts.slice(1)) {
+        const threadDecklist = extractDecklistFromText(threadText);
+        if (threadDecklist) {
+          const lineCount = threadDecklist.split("\n").filter((l) => l.trim()).length;
+          console.log(`   📝 Found decklist in thread text: ${lineCount} lines`);
+          decklistText = threadDecklist;
+          ocrSuccess = true;
+          ocrCardsExtracted = lineCount;
+          break;
+        }
+      }
+
+      if (!decklistText && threadCtx.images.length === 0) {
         console.log("   ⚠️  No images or decklist found in thread. Skipping.");
         ocrTimeMs = Date.now() - ocrStart;
+        await sendTelegramAlert(
+          `⚠️ *Skipped mention* from @${mention.authorUsername}\nReason: No images or decklist found\nTweet: https://x.com/i/status/${mention.id}`
+        );
         // Log the skip
         logInteraction({
           id: crypto.randomUUID(),
@@ -208,39 +287,44 @@ async function handleMention(
         return;
       }
 
-      console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
+      if (!decklistText) {
+        console.log(`   🖼️  Found ${threadCtx.images.length} image(s). Running OCR...`);
 
-      // Step 3: OCR the images
-      ocrResult = await extractDecklistFromImages(threadCtx.images);
+        // Step 3: OCR the images
+        ocrResult = await extractDecklistFromImages(threadCtx.images);
 
-      if (!ocrResult) {
-        console.log("   ⚠️  No decklist found in images. Skipping.");
-        ocrTimeMs = Date.now() - ocrStart;
-        logInteraction({
-          id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          tweetId: mention.id,
-          authorId: mention.authorId,
-          authorUsername: mention.authorUsername,
-          tweetText: mention.text.slice(0, 280),
-          imageCount: threadCtx.images.length,
-          ocrSuccess: false, ocrPassCount: threadCtx.images.length, ocrCardsExtracted: 0,
-          ocrTimeMs, ocrErrors: ["OCR returned no decklist"],
-          scryfallCardsResolved: 0, scryfallCardsNotFound: [], scryfallTimeMs: 0,
-          replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
-          totalTimeMs: Date.now() - startTime,
-          mainboardCount: 0, sideboardCount: 0, utmId, errors,
-          ocrExpectedCount: null, ocrCorrectionRan: false, ocrCorrectionAccepted: false,
-          imageUrl: threadCtx.images[0] ?? null,
-        });
-        return;
+        if (!ocrResult) {
+          console.log("   ⚠️  No decklist found in images. Skipping.");
+          ocrTimeMs = Date.now() - ocrStart;
+          await sendTelegramAlert(
+            `⚠️ *Skipped mention* from @${mention.authorUsername}\nReason: OCR returned no decklist (${threadCtx.images.length} image(s))\nTweet: https://x.com/i/status/${mention.id}`
+          );
+          logInteraction({
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            tweetId: mention.id,
+            authorId: mention.authorId,
+            authorUsername: mention.authorUsername,
+            tweetText: mention.text.slice(0, 280),
+            imageCount: threadCtx.images.length,
+            ocrSuccess: false, ocrPassCount: threadCtx.images.length, ocrCardsExtracted: 0,
+            ocrTimeMs, ocrErrors: ["OCR returned no decklist"],
+            scryfallCardsResolved: 0, scryfallCardsNotFound: [], scryfallTimeMs: 0,
+            replySent: false, replyFormatVariant: variant, replyTimeMs: 0,
+            totalTimeMs: Date.now() - startTime,
+            mainboardCount: 0, sideboardCount: 0, utmId, errors,
+            ocrExpectedCount: null, ocrCorrectionRan: false, ocrCorrectionAccepted: false,
+            imageUrl: threadCtx.images[0] ?? null,
+          });
+          return;
+        }
+
+        decklistText = ocrResult.decklist;
+        ocrCardsExtracted = ocrResult.actualCount;
+        const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
+        console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
+        ocrSuccess = true;
       }
-
-      decklistText = ocrResult.decklist;
-      ocrCardsExtracted = ocrResult.actualCount;
-      const lineCount = decklistText.split("\n").filter((l) => l.trim()).length;
-      console.log(`   ✅ Extracted decklist: ${lineCount} lines`);
-      ocrSuccess = true;
     }
     ocrTimeMs = Date.now() - ocrStart;
 
@@ -431,8 +515,10 @@ export function extractDecklistFromText(text: string): string | null {
   const lines = cleaned.split("\n").map((l) => l.trim()).filter((l) => l);
 
   // Keep card lines AND section headers (Sideboard, Side, Companion, Commander, Name, Author)
+  // Filter out aggregate summary lines like "7 OTHER SPELLS", "3 TOTAL CREATURES"
+  const AGGREGATE = /^\d+x?\s+(OTHER|TOTAL|MORE)\s+\w+$/i;
   const deckLines = lines.filter((l) =>
-    /^\d+x?\s+\w/i.test(l) ||
+    (/^\d+x?\s+\w/i.test(l) && !AGGREGATE.test(l)) ||
     /^(sideboard|side|companion|commander)$/i.test(l) ||
     /^(name|author)[:\s]/i.test(l)
   );
@@ -523,11 +609,15 @@ function startHealthServer() {
         status: "ok",
         startedAt,
         uptime: process.uptime(),
+        pollCount,
+        processedMentions: processed.size,
         lastPollAt,
         lastNotificationAttempt,
         lastNotificationSuccess,
         notificationFailCount,
+        lastExitReason,
         telegramConfigured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+        memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
       };
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(payload));

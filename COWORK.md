@@ -55,7 +55,9 @@ If a reply needs to be deleted:
 
 **Keep this fast:** max 3 replies, max 30 seconds. Skip this step entirely if no replies were sent in the last hour.
 
-## After Every Run
+## After Every Run (MANDATORY — do not skip)
+
+These steps MUST be completed before the session ends, even if the tweet search found nothing.
 
 1. **Write heartbeat** to `agent-heartbeat.json`:
    ```

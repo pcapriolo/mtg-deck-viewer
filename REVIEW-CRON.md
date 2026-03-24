@@ -22,6 +22,9 @@ Check for:
 - **`lastPollAt` is stale (> 5 minutes old)** — bot alive but not polling. Alert.
 - **`notificationFailCount` > 0** — notifications are failing. Alert with the count.
 - **`lastNotificationSuccess` is `null` and `uptime` > 600** — bot has been up 10+ minutes without a single successful notification. Alert.
+- **Frozen uptime (CRITICAL):** Fetch `/api/bot-health` twice, 5 seconds apart. If `uptime` is identical to the millisecond both times, the bot process is dead and Railway is serving a cached response. Alert as `🚨 CRITICAL: Bot process is dead (frozen uptime). Redeploy needed: railway redeploy --service mtg-bot-v2 -y`
+- **`pollCount` is 0 and `uptime` > 120** — bot started but never completed a poll. Likely crashing on first poll.
+- **`memoryMB` > 400** — bot is leaking memory, will OOM soon. Alert.
 
 If any check fails:
 ```
