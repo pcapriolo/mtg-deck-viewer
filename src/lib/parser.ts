@@ -44,6 +44,7 @@ const LINE_PATTERN = /^(\d+)\s*[xX]?\s+(.+)$/;
 // Matches Arena set/collector info: "(MH3) 123"
 const ARENA_SET_PATTERN = /\(([A-Z0-9]+)\)\s+(\d+[a-z]?)$/;
 
+
 // Matches MTGO sideboard prefix: "SB: 2 Card Name"
 const MTGO_SB_PATTERN = /^SB:\s*/i;
 
@@ -128,6 +129,12 @@ export function parseDeckList(input: string): ParsedDeck {
     let name = match[2].trim();
     let set: string | undefined;
     let collectorNumber: string | undefined;
+
+    // Strip Arena Commander/foil suffixes: "*CMDR*" marks the commander; "*F*" marks foil
+    if (/\*CMDR\*/.test(name)) {
+      lineSection = "commander";
+    }
+    name = name.replace(/\s*\*CMDR\*\s*/g, "").replace(/\s*\*F\*\s*/g, "").trim();
 
     // Strip Arena set/collector info
     const arenaMatch = name.match(ARENA_SET_PATTERN);

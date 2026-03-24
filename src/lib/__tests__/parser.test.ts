@@ -54,6 +54,35 @@ describe('parseDeckList', () => {
       const result = parseDeckList('1 Card Name (SET) 42a')
       expect(result.entries[0].collectorNumber).toBe('42a')
     })
+
+    it('strips *CMDR* suffix and marks card as commander section', () => {
+      const result = parseDeckList('1 Atraxa, Praetors\' Voice *CMDR*')
+      expect(result.entries).toHaveLength(1)
+      expect(result.entries[0].name).toBe('Atraxa, Praetors\' Voice')
+      expect(result.entries[0].section).toBe('commander')
+    })
+
+    it('strips *F* foil suffix without changing section', () => {
+      const result = parseDeckList('4 Lightning Bolt *F*')
+      expect(result.entries[0].name).toBe('Lightning Bolt')
+      expect(result.entries[0].section).toBe('mainboard')
+    })
+
+    it('strips both *CMDR* and *F* suffixes together', () => {
+      const result = parseDeckList('1 Atraxa, Praetors\' Voice *CMDR* *F*')
+      expect(result.entries[0].name).toBe('Atraxa, Praetors\' Voice')
+      expect(result.entries[0].section).toBe('commander')
+    })
+
+    it('handles full Arena Commander export with *CMDR* and set info', () => {
+      const input = '1 Atraxa, Praetors\' Voice *CMDR* (ONE) 196\n4 Forest (ONE) 277'
+      const result = parseDeckList(input)
+      expect(result.entries[0].name).toBe('Atraxa, Praetors\' Voice')
+      expect(result.entries[0].section).toBe('commander')
+      expect(result.entries[0].set).toBe('ONE')
+      expect(result.entries[1].name).toBe('Forest')
+      expect(result.entries[1].section).toBe('mainboard')
+    })
   })
 
   describe('MTGO sideboard prefix', () => {
