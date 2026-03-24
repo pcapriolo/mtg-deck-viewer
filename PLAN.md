@@ -58,6 +58,9 @@ Alert if any of these are true:
 - `lastNotificationSuccess` is `null` and `uptime` > 600 seconds → bot running but has never sent a notification
 - `notificationFailCount` > 3 → notifications are failing repeatedly
 - `lastPollAt` is stale (> 5 minutes old) → bot process alive but not polling
+- **Frozen uptime:** Fetch `/api/bot-health` twice, 5 seconds apart. If `uptime` is identical to the millisecond, the process is dead (Railway serving cached response). Escalate to Critical.
+- `pollCount` is 0 and `uptime` > 120 → bot started but never completed a poll (crash on first poll)
+- `memoryMB` > 400 → memory leak, OOM imminent
 
 ```
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
