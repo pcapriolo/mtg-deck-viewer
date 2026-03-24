@@ -3,6 +3,7 @@ import {
   parseDeckList,
   mainboardEntries,
   sideboardEntries,
+  companionEntries,
   totalCards,
   type DeckEntry,
   type ParsedDeck,
@@ -188,6 +189,38 @@ describe('helper functions', () => {
       const side = sideboardEntries(deck)
       expect(side).toHaveLength(2)
       expect(side.every((e) => e.section === 'sideboard')).toBe(true)
+    })
+  })
+
+  describe('companionEntries', () => {
+    it('returns only companion entries', () => {
+      const deckWithCompanion: ParsedDeck = {
+        entries: [
+          { quantity: 4, name: 'Lightning Bolt', section: 'mainboard' },
+          { quantity: 1, name: 'Lurrus of the Dream-Den', section: 'companion' },
+          { quantity: 2, name: 'Negate', section: 'sideboard' },
+        ],
+      }
+      const comp = companionEntries(deckWithCompanion)
+      expect(comp).toHaveLength(1)
+      expect(comp[0].name).toBe('Lurrus of the Dream-Den')
+      expect(comp[0].section).toBe('companion')
+    })
+
+    it('returns empty array when no companion entries exist', () => {
+      expect(companionEntries(deck)).toHaveLength(0)
+    })
+
+    it('companion entry is not included in mainboard or sideboard', () => {
+      const deckWithCompanion: ParsedDeck = {
+        entries: [
+          { quantity: 4, name: 'Lightning Bolt', section: 'mainboard' },
+          { quantity: 1, name: 'Yorion, Sky Nomad', section: 'companion' },
+        ],
+      }
+      expect(mainboardEntries(deckWithCompanion)).toHaveLength(1)
+      expect(sideboardEntries(deckWithCompanion)).toHaveLength(0)
+      expect(companionEntries(deckWithCompanion)).toHaveLength(1)
     })
   })
 

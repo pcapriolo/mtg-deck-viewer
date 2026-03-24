@@ -14,6 +14,7 @@ import CardHover from "./CardHover";
 interface DeckViewerProps {
   entries: ResolvedEntry[];
   sideboardEntries?: ResolvedEntry[];
+  companionEntries?: ResolvedEntry[];
   deckName?: string;
   deckAuthor?: string;
 }
@@ -53,6 +54,7 @@ const TYPE_ICONS: Partial<Record<CardCategory, string>> = {
 export default function DeckViewer({
   entries,
   sideboardEntries = [],
+  companionEntries = [],
   deckName,
   deckAuthor,
 }: DeckViewerProps) {
@@ -251,18 +253,37 @@ export default function DeckViewer({
           )}
         </div>
 
-        {/* Sideboard */}
-        {sideboardEntries.length > 0 && (
-          <div className="relative border-l border-gray-700/50 bg-gray-900/30 p-3 flex flex-col" style={{ width: CARD_W + 24 }}>
-            {/* Vertical "SIDEBOARD" label */}
+        {/* Companion + Sideboard column */}
+        {(companionEntries.length > 0 || sideboardEntries.length > 0) && (
+          <div className="relative border-l border-gray-700/50 bg-gray-900/30 p-3 flex flex-col gap-3" style={{ width: CARD_W + 24 }}>
+            {/* Vertical label */}
             <div className="absolute -left-3 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] font-bold uppercase tracking-[0.3em] text-gray-500 whitespace-nowrap pointer-events-none select-none">
-              Sideboard · {sideboardTotal}
+              {sideboardEntries.length > 0 ? `Sideboard · ${sideboardTotal}` : "Companion"}
             </div>
-            <div className="ml-2 space-y-0.5">
-              {sortedSideboard.map(({ entry, card }) => (
-                <CardStack key={card.id + "sb"} card={card} quantity={entry.quantity} compact />
-              ))}
-            </div>
+
+            {/* Companion zone */}
+            {companionEntries.length > 0 && (
+              <div className="ml-2">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-amber-500/80 mb-1 flex items-center gap-1">
+                  <span>✦</span>
+                  <span>Companion</span>
+                </div>
+                <div className="space-y-0.5">
+                  {companionEntries.map(({ entry, card }) => (
+                    <CardStack key={card.id + "cp"} card={card} quantity={entry.quantity} compact />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sideboard zone */}
+            {sideboardEntries.length > 0 && (
+              <div className="ml-2 space-y-0.5">
+                {sortedSideboard.map(({ entry, card }) => (
+                  <CardStack key={card.id + "sb"} card={card} quantity={entry.quantity} compact />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

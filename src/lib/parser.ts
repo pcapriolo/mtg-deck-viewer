@@ -152,6 +152,10 @@ export function sideboardEntries(deck: ParsedDeck): DeckEntry[] {
   return deck.entries.filter((e) => e.section === "sideboard");
 }
 
+export function companionEntries(deck: ParsedDeck): DeckEntry[] {
+  return deck.entries.filter((e) => e.section === "companion");
+}
+
 export function totalCards(entries: DeckEntry[]): number {
   return entries.reduce((sum, e) => sum + e.quantity, 0);
 }

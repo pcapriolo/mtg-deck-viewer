@@ -9,6 +9,7 @@ import ExportButtons from "@/components/ExportButtons";
 interface SharedDeckViewProps {
   mainboard: ResolvedEntry[];
   sideboard: ResolvedEntry[];
+  companion?: ResolvedEntry[];
   deckName?: string;
   encoded: string;
 }
@@ -16,10 +17,11 @@ interface SharedDeckViewProps {
 export default function SharedDeckView({
   mainboard,
   sideboard,
+  companion = [],
   deckName,
   encoded,
 }: SharedDeckViewProps) {
-  const allEntries = [...mainboard, ...sideboard];
+  const allEntries = [...mainboard, ...sideboard, ...companion];
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
@@ -44,8 +46,8 @@ export default function SharedDeckView({
         </div>
       </div>
 
-      {/* Deck — mainboard + sideboard */}
-      <DeckViewer entries={mainboard} sideboardEntries={sideboard} deckName={deckName} />
+      {/* Deck — mainboard + sideboard + companion */}
+      <DeckViewer entries={mainboard} sideboardEntries={sideboard} companionEntries={companion} deckName={deckName} />
 
       {/* Footer: price, legality, export */}
       <div className="border-t border-gray-800 pt-4 mt-6 space-y-3">
