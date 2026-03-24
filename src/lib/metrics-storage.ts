@@ -6,8 +6,10 @@ import path from "path";
  * Uses /data/metrics/ on Railway (volume mount), ./data/metrics/ locally.
  */
 export function getMetricsDir(): string {
-  const railwayPath = "/data/metrics";
-  if (fs.existsSync(railwayPath)) {
+  // Check for Railway volume mount at /data (create metrics subdir if needed)
+  if (fs.existsSync("/data")) {
+    const railwayPath = "/data/metrics";
+    fs.mkdirSync(railwayPath, { recursive: true });
     return railwayPath;
   }
   return path.resolve(process.cwd(), "data", "metrics");
