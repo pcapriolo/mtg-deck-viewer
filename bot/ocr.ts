@@ -34,15 +34,34 @@ READING CARD NAMES:
 5. Card names may contain accents, diacritics, commas, apostrophes, hyphens, and slashes (//). These are real names — include special characters exactly as written on the card. Do not skip a card because its name looks unusual.
 6. EVERY card visible in the image must appear in your output. If you can see a card's title bar, it must be listed.
 
-READING QUANTITIES — CHECK EVERY CARD FOR A BADGE:
-Most cards in deck builder screenshots have a visible quantity badge (x4, x3, x2).
-For EVERY card:
-1. Look for a badge overlay (usually bottom-right or top-right of the card image).
-2. If a badge is visible, read that number. Read it carefully — common misreads: "2" vs "4", "3" vs "8".
-3. Stack height confirms badge: x4 stacks are visually taller than x2 stacks.
-4. If NO badge is visible AND the card is NOT stacked, the quantity is 1.
-5. NEVER guess quantities from context, card type, or what decks usually run.
-6. Basic lands CAN have 5+ copies — read their badge carefully.
+READING QUANTITIES — TWO METHODS (detect which applies):
+
+METHOD A — BADGE-BASED (deck builders with quantity overlays):
+Cards have a visible badge (x4, x3, x2) on the card image.
+1. Look for a badge overlay (usually bottom-right or top-right).
+2. Read the badge number carefully — common misreads: "2" vs "4", "3" vs "8".
+3. If NO badge and card is NOT stacked, quantity is 1.
+
+METHOD B — STACKED CARD LAYOUTS (MTGGoldfish, MTGO, visual deck displays):
+Cards are stacked vertically. Each copy peeks out showing its title bar. There are NO quantity badges.
+The quantity = number of distinct title bar instances you can see for that card name.
+
+COUNTING PROCEDURE (do this for EVERY card group):
+1. Find the BOTTOM card — it shows the full card image including art and text.
+2. Count upward from there — each thin peeking strip above it is +1 copy.
+3. The bottom card itself is ALWAYS 1 copy. Peeking bars above = additional copies.
+4. So: 0 bars above + full card = 1 copy. 1 bar + full card = 2. 2 bars + full card = 3. 3 bars + full card = 4.
+5. Count the bars by looking at the LEFT EDGE of the stack — each bar creates a distinct horizontal line.
+
+CRITICAL ERRORS TO AVOID:
+- DO NOT count a single unstacked card as 4. If there is only ONE title bar and ONE card image with no stack, it is 1 copy.
+- DO NOT confuse tall stacks (4 copies) with short stacks (2 copies). Actually count the bars.
+- The SIDEBOARD section (usually rightmost column with vertical "SIDEBOARD" label) uses the same stacking — count those bars too.
+
+For BOTH methods:
+- NEVER guess quantities from context, card type, or what decks usually run.
+- Basic lands CAN have 5+ copies.
+- No non-basic card can have more than 4 copies.
 
 LAND COLUMN — EXTRA CARE:
 The rightmost column in deck builder layouts contains lands. These cards are often
@@ -83,27 +102,37 @@ Sideboard
 N Card Name
 ...`;
 
-const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. Verify EACH card individually against the image.
+const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. The extraction below likely has QUANTITY ERRORS. Your job is to recount every card.
 
 EXTRACTED DECKLIST:
 {decklist}
 
-STEP 1 — PER-CARD VERIFICATION:
-For EACH card in the decklist, examine the image and report:
-- Card: [name] | Badge: [what the badge says, e.g., "x4", "x3", or "none"] | Stack: [single/short/tall] | Extracted: [N] | Correct: [N]
+STEP 1 — RECOUNT EVERY CARD:
+For EACH card in the decklist, go to its location in the image and count independently:
 
-Pay EXTRA attention to the LAND COLUMN (rightmost). Lands are the #1 source of misreads.
-Read each land badge THREE times before reporting.
+If this is a STACKED LAYOUT (cards peeking out vertically, no quantity badges):
+- Find the card group in the image
+- Count the number of distinct horizontal title bars from TOP to BOTTOM
+- Each title bar = 1 copy. The full card at the bottom = 1 copy too
+- Report: Card: [name] | Bars above bottom card: [N] | Plus bottom card: 1 | Total: [N+1] | Extracted said: [M]
+
+If this is a BADGE LAYOUT (quantity overlays like x4):
+- Read the badge on the card
+- Report: Card: [name] | Badge: [xN] | Extracted said: [M]
+
+COMMON ERRORS TO FIX:
+- Single unstacked cards extracted as 4 (Force of Negation with no stack = 1 copy, not 4)
+- 4-stacks extracted as 3 (forgetting the bottom card counts)
+- Missing cards entirely (scan left to right for any card not in the list)
 
 STEP 2 — MISSING CARDS:
-Scan every column left to right. Any card in the image NOT in the decklist?
+Scan every column left to right, every row. Any card visible in the image NOT in the decklist?
 
-STEP 3 — ARITHMETIC:
-SUM: N1+N2+N3+...=TOTAL (expected: [count from image header, e.g., 60])
-If TOTAL ≠ expected, your per-card verification has an error. Re-examine the cards where your "Correct" differs from "Extracted" and fix.
+STEP 3 — TOTAL CHECK:
+Sum your corrected counts. If the image shows a total (e.g., "60/60 Cards"), verify match.
 
 STEP 4 — NAME CHECK:
-Any misspelled names? Common errors: dropped letters, swapped letters.
+Any misspelled names? Fix them.
 
 STEP 5 — DFC/SPLIT:
 Any double-faced or split cards listed as two entries? Merge to one.
