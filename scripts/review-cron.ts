@@ -706,11 +706,67 @@ async function checkPendingPRApprovals(): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 
+async function checkBotHealth(): Promise<void> {
+  console.log("Checking bot health...");
+  try {
+    // Fetch bot health twice, 5s apart, to detect frozen uptime
+    const res1 = await fetch(`${DECK_VIEWER_URL}/api/bot-health`, { signal: AbortSignal.timeout(5000) });
+    if (!res1.ok) {
+      console.log("Bot health endpoint unreachable — attempting redeploy");
+      await sendTelegram("🚨 Bot unreachable — auto-redeploying...");
+      try {
+        execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
+        await sendTelegram("✅ Bot redeploy triggered");
+      } catch (e) {
+        await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
+      }
+      return;
+    }
+
+    const data1 = await res1.json();
+    await new Promise((r) => setTimeout(r, 5000));
+    const res2 = await fetch(`${DECK_VIEWER_URL}/api/bot-health`, { signal: AbortSignal.timeout(5000) });
+    const data2 = res2.ok ? await res2.json() : null;
+
+    // Frozen uptime = process is dead, Railway serving cached response
+    if (data2 && data1.uptime === data2.uptime) {
+      console.log(`Bot has frozen uptime (${data1.uptime}s) — auto-redeploying`);
+      await sendTelegram(`🚨 Bot frozen (uptime stuck at ${Math.round(data1.uptime)}s) — auto-redeploying...`);
+      try {
+        execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
+        await sendTelegram("✅ Bot redeploy triggered");
+      } catch (e) {
+        await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
+      }
+      return;
+    }
+
+    // Check for high notification failures
+    if (data1.notificationFailCount > 3) {
+      await sendTelegram(`⚠️ Bot notification failures: ${data1.notificationFailCount}`);
+    }
+
+    console.log(`Bot healthy: uptime=${Math.round(data1.uptime)}s polls=${data1.pollCount}`);
+  } catch (err) {
+    console.log("Bot health check failed:", err);
+    await sendTelegram("🚨 Bot health check failed — attempting redeploy...");
+    try {
+      execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
+      await sendTelegram("✅ Bot redeploy triggered");
+    } catch (e) {
+      await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const timestamp = new Date().toISOString();
   console.log(`\n=== Review cron: ${timestamp} ===`);
 
-  // Step 0: Check for pending PR approval replies on Telegram
+  // Step 0a: Check bot health and auto-restart if dead
+  await checkBotHealth();
+
+  // Step 0b: Check for pending PR approval replies on Telegram
   await checkPendingPRApprovals();
 
   // Step 1: Fetch stats
@@ -733,6 +789,16 @@ async function main(): Promise<void> {
 
   if (total === 0) {
     await sendTelegram("🃏 Hourly review: no interactions in the last hour.");
+    // Still write heartbeat before returning
+    try {
+      const hbPath = "./agent-heartbeat.json";
+      const hb = fs.existsSync(hbPath) ? JSON.parse(fs.readFileSync(hbPath, "utf-8")) : {};
+      hb.REVIEW = new Date().toISOString();
+      fs.writeFileSync(hbPath, JSON.stringify(hb, null, 2));
+    } catch (e) {
+      console.error("Failed to write heartbeat:", e);
+    }
+    console.log("Done.");
     return;
   }
 
