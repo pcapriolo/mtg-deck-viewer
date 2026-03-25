@@ -126,6 +126,31 @@ export default function DeckViewer({
   }, [entries]);
   const curveMax = Math.max(...curveBuckets, 1);
 
+  // Average CMC (non-lands, weighted by quantity)
+  const avgCmc = useMemo(() => {
+    let totalCmc = 0;
+    let totalSpells = 0;
+    for (const { card, entry } of entries) {
+      if (card.type_line.toLowerCase().includes("land")) continue;
+      totalCmc += card.cmc * entry.quantity;
+      totalSpells += entry.quantity;
+    }
+    return totalSpells > 0 ? totalCmc / totalSpells : 0;
+  }, [entries]);
+
+  // Type breakdown percentages (creatures, spells, lands) of mainboard
+  const typeBreakdown = useMemo(() => {
+    if (totalCards === 0) return { creatures: 0, spells: 0, lands: 0 };
+    const creatures = (typeCounts.get("Creature") ?? 0) + (typeCounts.get("Planeswalker") ?? 0);
+    const lands = typeCounts.get("Land") ?? 0;
+    const spells = totalCards - creatures - lands;
+    return {
+      creatures: Math.round((creatures / totalCards) * 100),
+      spells: Math.round((spells / totalCards) * 100),
+      lands: Math.round((lands / totalCards) * 100),
+    };
+  }, [typeCounts, totalCards]);
+
   const sideboardTotal = sideboardEntries.reduce((sum, e) => sum + e.entry.quantity, 0);
 
   // Sort sideboard by category then CMC (so creatures group together, etc.)
@@ -237,6 +262,25 @@ export default function DeckViewer({
             })}
           </div>
         </div>
+
+        {/* Stats row: avg CMC + type breakdown percentages */}
+        {totalCards > 0 && (
+          <div className="flex items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
+            <span title="Average mana value of non-land spells">
+              Avg. CMC <span className="text-gray-300 font-medium">{avgCmc.toFixed(2)}</span>
+            </span>
+            <span className="text-gray-700">·</span>
+            <span title="Creatures & Planeswalkers">
+              Creatures <span className="text-gray-300 font-medium">{typeBreakdown.creatures}%</span>
+            </span>
+            <span title="Instants, Sorceries, Enchantments, Artifacts, Other">
+              Spells <span className="text-gray-300 font-medium">{typeBreakdown.spells}%</span>
+            </span>
+            <span title="Lands">
+              Lands <span className="text-gray-300 font-medium">{typeBreakdown.lands}%</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Card grid + Sideboard ─────────────────── */}
