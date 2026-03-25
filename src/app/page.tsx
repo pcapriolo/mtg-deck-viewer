@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { parseDeckList, mainboardEntries, sideboardEntries } from "@/lib/parser";
+import { parseDeckList, mainboardEntries, sideboardEntries, companionEntries } from "@/lib/parser";
 import { fetchCardsAction } from "@/lib/scryfall-server";
 import { encodeDeck } from "@/lib/deck-encoder";
 import { ResolvedEntry } from "@/lib/types";
@@ -19,6 +19,7 @@ export default function Home() {
   const [warning, setWarning] = useState<string | null>(null);
   const [mainboard, setMainboard] = useState<ResolvedEntry[]>([]);
   const [sideboard, setSideboard] = useState<ResolvedEntry[]>([]);
+  const [companion, setCompanion] = useState<ResolvedEntry[]>([]);
   const [deckName, setDeckName] = useState<string | undefined>();
   const [deckAuthor, setDeckAuthor] = useState<string | undefined>();
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export default function Home() {
   const resetToInput = useCallback(() => {
     setMainboard([]);
     setSideboard([]);
+    setCompanion([]);
     setShareUrl(null);
     setDeckName(undefined);
     setDeckAuthor(undefined);
@@ -49,6 +51,7 @@ export default function Home() {
     setWarning(null);
     setMainboard([]);
     setSideboard([]);
+    setCompanion([]);
     setShareUrl(null);
 
     try {
@@ -97,8 +100,9 @@ export default function Home() {
 
       const main = resolveEntries(mainboardEntries(deck));
       const side = resolveEntries(sideboardEntries(deck));
+      const comp = resolveEntries(companionEntries(deck));
 
-      if (main.length === 0 && side.length === 0) {
+      if (main.length === 0 && side.length === 0 && comp.length === 0) {
         setError("Could not find any cards on Scryfall. Check spelling.");
         setLoading(false);
         return;
@@ -106,11 +110,12 @@ export default function Home() {
 
       // "Not found" warning
       const allParsed = deck.entries;
-      const resolvedCount = main.length + side.length;
+      const resolvedCount = main.length + side.length + comp.length;
       if (resolvedCount < allParsed.length) {
         const resolvedNames = new Set([
           ...main.map((r) => r.entry.name.toLowerCase()),
           ...side.map((r) => r.entry.name.toLowerCase()),
+          ...comp.map((r) => r.entry.name.toLowerCase()),
         ]);
         const notFound = allParsed
           .filter((e) => !resolvedNames.has(e.name.toLowerCase()))
@@ -129,6 +134,7 @@ export default function Home() {
 
       setMainboard(main);
       setSideboard(side);
+      setCompanion(comp);
 
       // Generate share URL
       const encoded = encodeDeck(deck);
@@ -144,7 +150,7 @@ export default function Home() {
     }
   }, []);
 
-  const hasResults = mainboard.length > 0 || sideboard.length > 0;
+  const hasResults = mainboard.length > 0 || sideboard.length > 0 || companion.length > 0;
 
   return (
     <main className={`mx-auto px-4 py-8 ${hasResults ? "max-w-7xl" : "max-w-2xl"}`}>
@@ -212,6 +218,7 @@ export default function Home() {
           <DeckViewer
             entries={mainboard}
             sideboardEntries={sideboard}
+            companionEntries={companion}
             deckName={deckName}
             deckAuthor={deckAuthor}
           />

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { decodeDeck } from "@/lib/deck-encoder";
 import { fetchCardsAction } from "@/lib/scryfall-server";
-import { mainboardEntries, sideboardEntries, totalCards } from "@/lib/parser";
+import { mainboardEntries, sideboardEntries, companionEntries, totalCards } from "@/lib/parser";
 import type { ScryfallCard } from "@/lib/scryfall";
 import { categorizeCard } from "@/lib/scryfall";
 import type { ResolvedEntry } from "@/lib/types";
@@ -245,11 +245,13 @@ export default async function SharedDeckPage({ params, searchParams }: PageProps
 
   const mainboard = resolveEntries(mainboardEntries(deck), cardData);
   const sideboard = resolveEntries(sideboardEntries(deck), cardData);
+  const companion = resolveEntries(companionEntries(deck), cardData);
 
   return (
     <SharedDeckView
       mainboard={mainboard}
       sideboard={sideboard}
+      companion={companion}
       deckName={deck.name}
       encoded={encoded}
     />
