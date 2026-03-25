@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { extractDecklistFromText, checkReplyQuality } from "../bot";
+import { describe, it, expect, beforeEach } from "vitest";
+import { extractDecklistFromText, checkReplyQuality, addToProcessed, processed } from "../bot";
 import { summarizeDecklist, composeReplyText, extractDeckName } from "../encoder";
 
 describe("extractDecklistFromText", () => {
@@ -214,5 +214,43 @@ describe("checkReplyQuality", () => {
   it("skips ratio check when cardNamesCount is 0", () => {
     const result = checkReplyQuality({ ...validParams, cardNamesCount: 0 });
     expect(result.pass).toBe(true);
+  });
+});
+
+describe("addToProcessed", () => {
+  beforeEach(() => {
+    processed.clear();
+  });
+
+  it("adds an id to the processed set", () => {
+    addToProcessed("tweet-1");
+    expect(processed.has("tweet-1")).toBe(true);
+  });
+
+  it("does not add duplicate ids", () => {
+    addToProcessed("tweet-1");
+    addToProcessed("tweet-1");
+    expect(processed.size).toBe(1);
+  });
+
+  it("evicts the oldest entry when cap of 1000 is reached", () => {
+    for (let i = 0; i < 1000; i++) {
+      addToProcessed(`tweet-${i}`);
+    }
+    expect(processed.size).toBe(1000);
+    expect(processed.has("tweet-0")).toBe(true);
+
+    // Adding one more evicts the oldest (tweet-0)
+    addToProcessed("tweet-new");
+    expect(processed.size).toBe(1000);
+    expect(processed.has("tweet-0")).toBe(false);
+    expect(processed.has("tweet-new")).toBe(true);
+  });
+
+  it("does not evict when cap is not yet reached", () => {
+    addToProcessed("tweet-a");
+    addToProcessed("tweet-b");
+    expect(processed.size).toBe(2);
+    expect(processed.has("tweet-a")).toBe(true);
   });
 });
