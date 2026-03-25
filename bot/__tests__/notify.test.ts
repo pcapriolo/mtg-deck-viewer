@@ -7,6 +7,7 @@ describe("sendTelegramAlert", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
+    vi.useFakeTimers();
     originalFetch = globalThis.fetch;
     mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     globalThis.fetch = mockFetch;
@@ -15,6 +16,7 @@ describe("sendTelegramAlert", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.fetch = originalFetch;
     process.env.TELEGRAM_BOT_TOKEN = originalEnv.TELEGRAM_BOT_TOKEN;
     process.env.TELEGRAM_CHAT_ID = originalEnv.TELEGRAM_CHAT_ID;
@@ -35,7 +37,27 @@ describe("sendTelegramAlert", () => {
 
   it("handles API error gracefully (no throw, returns false)", async () => {
     mockFetch.mockRejectedValue(new Error("API error"));
-    await expect(sendTelegramAlert("Test")).resolves.toBe(false);
+    const promise = sendTelegramAlert("Test");
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it("retries once on failure then succeeds", async () => {
+    mockFetch
+      .mockRejectedValueOnce(new Error("transient error"))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    const promise = sendTelegramAlert("Test retry");
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns false after two consecutive failures", async () => {
+    mockFetch.mockRejectedValue(new Error("persistent error"));
+    const promise = sendTelegramAlert("Test");
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("truncates messages > 4096 chars", async () => {

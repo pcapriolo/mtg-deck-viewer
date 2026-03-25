@@ -1,9 +1,30 @@
 /**
  * Outbound Telegram notifications. Returns true on success, false on failure.
  * Never crashes the bot — all errors are caught and logged.
+ * Retries once after 2s on transient failures.
  */
 
 const MAX_MESSAGE_LENGTH = 4096;
+const RETRY_DELAY_MS = 2000;
+
+async function attemptSend(token: string, chatId: string, text: string): Promise<boolean> {
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "Markdown",
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "(unreadable)");
+    throw new Error(`Telegram API error ${res.status}: ${body}`);
+  }
+
+  return true;
+}
 
 export async function sendTelegramAlert(message: string): Promise<boolean> {
   try {
@@ -22,23 +43,19 @@ export async function sendTelegramAlert(message: string): Promise<boolean> {
         ? message.slice(0, MAX_MESSAGE_LENGTH - 14) + "...(truncated)"
         : message;
 
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "Markdown",
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "(unreadable)");
-      console.error(`Telegram API error ${res.status}: ${body}`);
-      return false;
+    try {
+      return await attemptSend(token, chatId, text);
+    } catch (firstErr) {
+      console.error(`Failed to send Telegram alert (attempt 1): ${firstErr}`);
+      // Retry once after a short delay
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      try {
+        return await attemptSend(token, chatId, text);
+      } catch (secondErr) {
+        console.error(`Failed to send Telegram alert (attempt 2): ${secondErr}`);
+        return false;
+      }
     }
-
-    return true;
   } catch (err) {
     console.error("Failed to send Telegram alert:", err);
     return false;

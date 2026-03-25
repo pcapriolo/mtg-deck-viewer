@@ -64,8 +64,15 @@ async function trackNotification(result: boolean): Promise<void> {
   lastNotificationAttempt = new Date().toISOString();
   if (result) {
     lastNotificationSuccess = lastNotificationAttempt;
+    notificationFailCount = 0; // reset streak on success
   } else {
     notificationFailCount++;
+    if (notificationFailCount === 3) {
+      // Log to stderr so Railway/PLAN agent can detect the alert pattern
+      console.error(
+        `🚨 PLAN ALERT: notificationFailCount=${notificationFailCount} — Telegram notifications failing. Last success: ${lastNotificationSuccess ?? "never"}. Uptime: ${Math.round(process.uptime())}s`
+      );
+    }
   }
 }
 
