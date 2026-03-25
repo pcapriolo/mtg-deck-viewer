@@ -171,9 +171,21 @@ async function main() {
 async function poll(reader: ReturnType<typeof createClient>["reader"], writer: ReturnType<typeof createClient>["writer"]) {
   lastPollAt = new Date().toISOString();
   const isFreshStart = sinceId === undefined;
-  const mentions = await fetchMentions(reader, BOT_USER_ID, sinceId);
+  let mentions: Awaited<ReturnType<typeof fetchMentions>> = [];
+  try {
+    mentions = await fetchMentions(reader, BOT_USER_ID, sinceId);
+  } catch (err) {
+    console.error(`   ❌ fetchMentions error:`, err);
+    return;
+  }
 
-  if (mentions.length === 0) return;
+  if (mentions.length === 0) {
+    // Log sinceId every 10 polls so we can debug
+    if (pollCount % 10 === 0) {
+      console.log(`   📭 No mentions (sinceId: ${sinceId ?? "none"}, freshStart: ${isFreshStart})`);
+    }
+    return;
+  }
 
   // On fresh start (no persisted sinceId), skip mentions older than 5 minutes
   // to avoid re-processing stale mentions after a deploy resets the filesystem

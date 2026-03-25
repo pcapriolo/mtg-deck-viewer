@@ -45,40 +45,50 @@ export async function fetchMentions(
   botUserId: string,
   sinceId?: string
 ): Promise<MentionTweet[]> {
-  const params: Record<string, string> = {
-    "tweet.fields": "created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+  // Use search/recent instead of userMentionTimeline — the mentions timeline
+  // doesn't index reply-mentions reliably, but search finds them immediately.
+  const bearerToken = requireEnv("X_BEARER_TOKEN");
+
+  const params = new URLSearchParams({
+    query: "@MtgViewer",
+    "tweet.fields": "created_at,conversation_id,in_reply_to_user_id,referenced_tweets,author_id",
     "media.fields": "url,type",
     expansions: "attachments.media_keys,author_id",
     "user.fields": "username",
     max_results: "20",
-  };
-  if (sinceId) params.since_id = sinceId;
+  });
+  if (sinceId) params.set("since_id", sinceId);
 
-  const response = await reader.v2.userMentionTimeline(botUserId, params);
+  const response = await fetch(
+    `https://api.twitter.com/2/tweets/search/recent?${params}`,
+    { headers: { Authorization: `Bearer ${bearerToken}` } }
+  );
 
+  if (!response.ok) {
+    console.error(`   ❌ Search API error: ${response.status} ${response.statusText}`);
+    return [];
+  }
+
+  const data = await response.json();
   const tweets: MentionTweet[] = [];
 
   // Build media lookup from includes
   const mediaMap = new Map<string, string>();
-  if (response.includes?.media) {
-    for (const m of response.includes.media) {
-      if (m.type === "photo" && m.url) {
-        mediaMap.set(m.media_key, m.url);
-      }
+  for (const m of data.includes?.media ?? []) {
+    if (m.type === "photo" && m.url) {
+      mediaMap.set(m.media_key, m.url);
     }
   }
 
   // Build user lookup from includes
   const userMap = new Map<string, string>();
-  if (response.includes?.users) {
-    for (const u of response.includes.users) {
-      userMap.set(u.id, u.username);
-    }
+  for (const u of data.includes?.users ?? []) {
+    userMap.set(u.id, u.username);
   }
 
-  for (const tweet of response.data?.data ?? []) {
+  for (const tweet of data.data ?? []) {
     const imageUrls: string[] = [];
-    const mediaKeys = (tweet as any).attachments?.media_keys ?? [];
+    const mediaKeys = tweet.attachments?.media_keys ?? [];
     for (const key of mediaKeys) {
       const url = mediaMap.get(key);
       if (url) imageUrls.push(url);
@@ -89,12 +99,12 @@ export async function fetchMentions(
       text: tweet.text,
       authorId: tweet.author_id ?? "",
       authorUsername: userMap.get(tweet.author_id ?? "") ?? "",
-      conversationId: (tweet as any).conversation_id ?? tweet.id,
-      inReplyToId: (tweet as any).referenced_tweets?.find(
+      conversationId: tweet.conversation_id ?? tweet.id,
+      inReplyToId: tweet.referenced_tweets?.find(
         (r: any) => r.type === "replied_to"
       )?.id,
       imageUrls,
-      createdAt: (tweet as any).created_at ?? "",
+      createdAt: tweet.created_at ?? "",
     });
   }
 
