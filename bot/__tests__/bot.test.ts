@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractDecklistFromText, checkReplyQuality } from "../bot";
 import { summarizeDecklist, composeReplyText, extractDeckName } from "../encoder";
+import { parseDeckList } from "../../src/lib/parser";
 
 describe("extractDecklistFromText", () => {
   it("returns decklist when 3+ lines match 'N CardName' pattern", () => {
@@ -77,6 +78,21 @@ describe("extractDecklistFromText", () => {
       "4 Lightning Bolt\n4 Counterspell\n2 Snapcaster Mage";
     const result = extractDecklistFromText(text);
     expect(result).toContain("Companion");
+  });
+
+  it("preserves Arena set-suffix lines so parseDeckList can strip them", () => {
+    // Regression: bot was passing "Faithless Looting (STA) 38" verbatim to Scryfall
+    const text =
+      "4 Faithless Looting (STA) 38\n4 Blackcleave Cliffs (ONE) 248\n2 Mana Confluence (JOU) 163";
+    const result = extractDecklistFromText(text);
+    // extractDecklistFromText should detect these as valid card lines
+    expect(result).not.toBeNull();
+    // parseDeckList must strip the Arena suffix before the names reach Scryfall
+    const parsed = parseDeckList(result!);
+    expect(parsed.entries).toHaveLength(3);
+    expect(parsed.entries[0].name).toBe("Faithless Looting");
+    expect(parsed.entries[1].name).toBe("Blackcleave Cliffs");
+    expect(parsed.entries[2].name).toBe("Mana Confluence");
   });
 });
 
