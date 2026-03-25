@@ -91,11 +91,16 @@ process.on("unhandledRejection", async (reason) => {
 
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
   process.on(signal, async () => {
-    console.error(`💀 Received ${signal} — shutting down`);
+    const uptime = Math.round(process.uptime());
+    console.error(`💀 Received ${signal} — shutting down (uptime: ${uptime}s, polls: ${pollCount})`);
     lastExitReason = signal;
-    await sendTelegramAlert(
-      `⚠️ *Bot shutting down* (${signal})\nPolls completed: ${pollCount}\nUptime: ${Math.round(process.uptime())}s\nLast poll: ${lastPollAt ?? "never"}`
-    ).catch(() => {});
+    // Only send Telegram + exit if we've been running for >30s (completed at least one poll).
+    // Early SIGTERMs during deploy transitions are noise — just exit quietly.
+    if (pollCount > 0 || uptime > 30) {
+      await sendTelegramAlert(
+        `⚠️ *Bot shutting down* (${signal})\nPolls completed: ${pollCount}\nUptime: ${uptime}s\nLast poll: ${lastPollAt ?? "never"}`
+      ).catch(() => {});
+    }
     process.exit(0);
   });
 }
