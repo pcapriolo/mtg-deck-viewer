@@ -107,23 +107,20 @@ const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering deckli
 EXTRACTED DECKLIST:
 {decklist}
 
-STEP 1 — RECOUNT EVERY CARD:
-For EACH card in the decklist, go to its location in the image and count independently:
+STEP 1 — RECOUNT EVERY CARD (mandatory visual evidence):
+For EACH card, you MUST describe what you physically see BEFORE writing a count.
+DO NOT use your knowledge of what decks "usually run". ONLY count what is visible.
 
-If this is a STACKED LAYOUT (cards peeking out vertically, no quantity badges):
-- Find the card group in the image
-- Count the number of distinct horizontal title bars from TOP to BOTTOM
-- Each title bar = 1 copy. The full card at the bottom = 1 copy too
-- Report: Card: [name] | Bars above bottom card: [N] | Plus bottom card: 1 | Total: [N+1] | Extracted said: [M]
+For each card, write exactly this format:
+CARD: [name] | SEE: [describe exactly what you see — "single card, full art, no stack above" OR "3 peeking bars above + 1 full card at bottom"] | COUNT: [number] | EXTRACTED: [what pass 1 said]
 
-If this is a BADGE LAYOUT (quantity overlays like x4):
-- Read the badge on the card
-- Report: Card: [name] | Badge: [xN] | Extracted said: [M]
-
-COMMON ERRORS TO FIX:
-- Single unstacked cards extracted as 4 (Force of Negation with no stack = 1 copy, not 4)
-- 4-stacks extracted as 3 (forgetting the bottom card counts)
-- Missing cards entirely (scan left to right for any card not in the list)
+Rules:
+- If you see ONE card with full art and NO peeking title bars stacked above it → COUNT: 1. Period. It does not matter if this card is "usually a 4-of". You count what you SEE.
+- If you see peeking title bars stacked above a full card → count bars + 1 for the bottom card.
+- If you see a quantity badge (x4, x3) → read the badge.
+- NEVER let card knowledge override visual evidence. A single visible card = 1 copy even if it's Lightning Bolt.
+- IMPORTANT: Some powerful cards (Force of Will, Force of Negation, Brainstorm, etc.) may appear as 1-2 copies in certain decks. Do NOT assume they are 4-of. Count ONLY what you see.
+- If your COUNT differs from EXTRACTED, flag it with CHANGED and explain what you see differently.
 
 STEP 2 — MISSING CARDS:
 Scan every column left to right, every row. Any card visible in the image NOT in the decklist?
