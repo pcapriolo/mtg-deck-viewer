@@ -231,7 +231,17 @@ async function poll(reader: ReturnType<typeof createClient>["reader"], writer: R
     // Skip self-mentions (bot replying to itself)
     if (mention.authorId === BOT_USER_ID) continue;
 
+    // Skip if we already processed a mention in this conversation (same original tweet).
+    // Multiple @mentions can point to the same decklist — only process it once.
+    const convKey = `conv:${mention.conversationId}`;
+    if (mention.conversationId && processed.has(convKey)) {
+      console.log(`   ⏭️  Skipping mention ${mention.id} — conversation ${mention.conversationId} already processed`);
+      addToProcessed(mention.id);
+      continue;
+    }
+
     addToProcessed(mention.id);
+    if (mention.conversationId) addToProcessed(convKey);
 
     console.log(`📩 Mention from @${mention.authorUsername}: "${mention.text.slice(0, 80)}..."`);
 
