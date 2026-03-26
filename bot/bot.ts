@@ -41,6 +41,8 @@ import { logInteraction, InteractionLog } from "./interaction-log";
 import { sendTelegramAlert } from "./notify";
 
 const SINCE_ID_FILE = "./since-id.txt";
+const REPLIED_FILE = "./replied-conversations.txt";
+const MAX_REPLIED_LINES = 500;
 const FRESH_START_WINDOW = 5 * 60 * 1000; // 5 minutes
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL ?? "60", 10) * 1000;
@@ -153,6 +155,19 @@ async function main() {
   try {
     sinceId = fs.readFileSync(SINCE_ID_FILE, "utf8").trim();
     console.log(`   Restored sinceId: ${sinceId}`);
+  } catch {}
+
+  // Restore replied conversation IDs from disk to prevent re-replies after restart
+  try {
+    let lines = fs.readFileSync(REPLIED_FILE, "utf8").trim().split("\n").filter(Boolean);
+    if (lines.length > MAX_REPLIED_LINES) {
+      lines = lines.slice(-MAX_REPLIED_LINES);
+      fs.writeFileSync(REPLIED_FILE, lines.join("\n") + "\n");
+    }
+    for (const id of lines) {
+      addToProcessed(`conv:${id}`);
+    }
+    console.log(`   Restored ${lines.length} replied conversation IDs`);
   } catch {}
 
   console.log("   Polling for mentions...\n");
@@ -501,6 +516,11 @@ async function handleMention(
       replyTimeMs = Date.now() - replyStart;
       replySent = true;
       console.log(`   ✅ Replied: https://x.com/i/status/${replyTweetId}\n`);
+
+      // Persist conversation ID so we don't re-reply after restart
+      if (mention.conversationId) {
+        try { fs.appendFileSync(REPLIED_FILE, `${mention.conversationId}\n`); } catch {}
+      }
 
       // Notify on Telegram after every successful reply
       const deckLabel = deckName ?? `${mainboardCount}-card deck`;
