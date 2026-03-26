@@ -269,4 +269,33 @@ describe("addToProcessed", () => {
     expect(processed.size).toBe(2);
     expect(processed.has("tweet-a")).toBe(true);
   });
+
+  it("stores conv: prefixed key for conversation-level deduplication", () => {
+    addToProcessed("conv:1234567890");
+    expect(processed.has("conv:1234567890")).toBe(true);
+  });
+
+  it("conv: key and tweet id are independent entries", () => {
+    addToProcessed("tweet-99");
+    addToProcessed("conv:1234567890");
+    expect(processed.size).toBe(2);
+    expect(processed.has("tweet-99")).toBe(true);
+    expect(processed.has("conv:1234567890")).toBe(true);
+  });
+
+  it("conv: key is evicted by the same LRU cap as tweet ids", () => {
+    // Fill to capacity with tweet ids
+    for (let i = 0; i < 1000; i++) {
+      addToProcessed(`tweet-${i}`);
+    }
+    expect(processed.size).toBe(1000);
+    // The oldest tweet-0 should still be present before we push over the cap
+    expect(processed.has("tweet-0")).toBe(true);
+
+    // Adding a conv: key pushes tweet-0 out
+    addToProcessed("conv:abc");
+    expect(processed.size).toBe(1000);
+    expect(processed.has("tweet-0")).toBe(false);
+    expect(processed.has("conv:abc")).toBe(true);
+  });
 });
