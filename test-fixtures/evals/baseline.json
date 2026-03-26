@@ -1,0 +1,14 @@
+{
+  "updatedAt": "2026-03-25T20:20:55.579Z",
+  "caseCount": 1,
+  "aggregateCardNameAccuracy": 0.8787878787878788,
+  "aggregateQuantityAccuracy": 0.8787878787878788,
+  "aggregateCountMatch": 1,
+  "aggregateScryfallResolved": 0.8484848484848485,
+  "cases": {
+    "2026-03-25_azorius-tempo": {
+      "cardNameAccuracy": 0.8787878787878788,
+      "quantityAccuracy": 0.8787878787878788
+    }
+  }
+}

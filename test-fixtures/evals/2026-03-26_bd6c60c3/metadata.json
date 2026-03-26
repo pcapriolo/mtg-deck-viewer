@@ -1,0 +1,18 @@
+{
+  "tweetId": "tweet-123",
+  "authorUsername": "testuser",
+  "capturedAt": "2026-03-26T00:00:00Z",
+  "inputType": "text",
+  "expectedCount": 60,
+  "actualCount": 60,
+  "ocrPassCount": 0,
+  "scryfallCardsNotFound": [
+    "Faithless Looting"
+  ],
+  "correctionsApplied": {
+    "Lightning Bolt": "Lightning Bolt"
+  },
+  "healingRan": true,
+  "healingAccepted": true,
+  "verified": true
+}

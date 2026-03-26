@@ -1,0 +1,19 @@
+{
+  "tweetId": "unknown",
+  "authorUsername": "unknown",
+  "capturedAt": "2026-03-25T12:00:00Z",
+  "inputType": "text",
+  "expectedCount": 58,
+  "actualCount": 58,
+  "ocrPassCount": 2,
+  "scryfallCardsNotFound": ["Floodflare Verge", "Stirring Town", "Inquisition Raid", "The Unagi of Ryoshi Island", "Irdana's Defender"],
+  "correctionsApplied": {
+    "Floodflare Verge": "Floodfarm Verge",
+    "Stirring Town": "Starting Town",
+    "Inquisition Raid": "Requisition Raid",
+    "The Unagi of Ryoshi Island": "The Unagi of Kyoshi Island"
+  },
+  "healingRan": false,
+  "healingAccepted": false,
+  "verified": true
+}

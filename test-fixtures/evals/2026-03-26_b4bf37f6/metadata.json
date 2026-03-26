@@ -1,0 +1,14 @@
+{
+  "tweetId": "tweet-123",
+  "authorUsername": "testuser",
+  "capturedAt": "2026-03-26T00:00:00Z",
+  "inputType": "image",
+  "expectedCount": 60,
+  "actualCount": 60,
+  "ocrPassCount": 0,
+  "scryfallCardsNotFound": [],
+  "correctionsApplied": {},
+  "healingRan": false,
+  "healingAccepted": false,
+  "verified": false
+}
