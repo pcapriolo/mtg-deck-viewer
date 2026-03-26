@@ -47,8 +47,20 @@ const DECK_VIEWER_URL = process.env.DECK_VIEWER_URL ?? "http://localhost:3000";
 const BOT_USER_ID = process.env.X_BOT_USER_ID ?? "";
 const MAX_CHAIN_DEPTH = 5; // How far up the reply chain to look for images
 
-// Track processed mentions to avoid duplicates across restarts
-const processed = new Set<string>();
+// Track processed mentions to avoid duplicates within a session.
+// Capped at MAX_PROCESSED to prevent unbounded memory growth; oldest entry
+// is evicted when the cap is reached (Set preserves insertion order).
+const MAX_PROCESSED = 1000;
+export const processed = new Set<string>();
+
+export function addToProcessed(id: string): void {
+  if (processed.has(id)) return;
+  if (processed.size >= MAX_PROCESSED) {
+    processed.delete(processed.values().next().value as string);
+  }
+  processed.add(id);
+}
+
 let sinceId: string | undefined;
 
 // Health counters — exposed via the health server
@@ -211,7 +223,7 @@ async function poll(reader: ReturnType<typeof createClient>["reader"], writer: R
     // Skip self-mentions (bot replying to itself)
     if (mention.authorId === BOT_USER_ID) continue;
 
-    processed.add(mention.id);
+    addToProcessed(mention.id);
 
     console.log(`📩 Mention from @${mention.authorUsername}: "${mention.text.slice(0, 80)}..."`);
 
