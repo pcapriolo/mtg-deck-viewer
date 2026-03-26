@@ -23,6 +23,7 @@
 
 import "dotenv/config";
 import fs from "node:fs";
+import { parseDeckList } from "../src/lib/parser";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
 import { extractDecklistFromImages, OcrResult } from "./ocr";
 import {
@@ -370,15 +371,17 @@ async function handleMention(
     const ocrDeckName = extractDeckName(decklistText);
     deckName = ocrDeckName;
     let replyText: string;
+    let resolvedCards: Record<string, import("./scryfall").BotScryfallCard> = {};
 
     try {
-      cardNames = decklistText
-        .split("\n")
-        .map((l) => l.match(/^\d+\s+(.+)$/)?.[1]?.trim())
-        .filter(Boolean) as string[];
+      // Use the shared parser to strip Arena set/collector suffixes (e.g. "(STA) 38")
+      // before passing names to Scryfall, which can't resolve them otherwise.
+      const parsed = parseDeckList(decklistText);
+      cardNames = parsed.entries.map((e) => e.name);
 
       const scryfallStart = Date.now();
-      const cards = await fetchCards(cardNames);
+      resolvedCards = await fetchCards(cardNames);
+      const cards = resolvedCards;
       scryfallTimeMs = Date.now() - scryfallStart;
 
       scryfallCardsResolved = Object.keys(cards).length;
@@ -437,6 +440,26 @@ async function handleMention(
       replyText = ocrDeckName
         ? `${ocrDeckName} · ${mainboardCount} cards\n\n▶ View deck →`
         : `${mainboardCount}-card deck\n\n▶ View deck →`;
+    }
+
+    // Step 5.5: Correct misspelled card names in decklist text before encoding.
+    // fetchCards indexes corrected names by the original misspelled key,
+    // so we can detect corrections and fix the text that goes into the URL.
+    if (cardNames.length > 0 && Object.keys(resolvedCards).length > 0) {
+      const corrections = new Map<string, string>();
+      for (const originalName of cardNames) {
+        const card = resolvedCards[originalName.toLowerCase()];
+        if (card && card.name.toLowerCase() !== originalName.toLowerCase()) {
+          corrections.set(originalName, card.name);
+        }
+      }
+      if (corrections.size > 0) {
+        for (const [wrong, correct] of corrections) {
+          const pattern = new RegExp(`^(\\d+\\s+)${escapeRegex(wrong)}$`, "gim");
+          decklistText = decklistText.replace(pattern, `$1${correct}`);
+        }
+        console.log(`   ✏️  Corrected ${corrections.size} card name(s) in URL: ${[...corrections.entries()].map(([w, c]) => `"${w}" → "${c}"`).join(", ")}`);
+      }
     }
 
     // Step 6: Generate the deck viewer URL
@@ -634,6 +657,10 @@ export function checkReplyQuality(params: {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Minimal health endpoint for Railway (expects a port)
