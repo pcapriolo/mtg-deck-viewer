@@ -162,6 +162,37 @@ function run(cmd: string): string {
   return execSync(cmd, { encoding: "utf-8", cwd: "/Users/paulcapriolo/MTG/deck-viewer" }).trim();
 }
 
+/**
+ * Locate the `railway` CLI binary.
+ * Checks common install locations so execSync succeeds even in restricted cron PATH.
+ */
+export function resolveRailwayBin(): string {
+  const candidates = [
+    "railway",
+    "/opt/homebrew/bin/railway",
+    "/usr/local/bin/railway",
+    `${process.env.HOME ?? ""}/.railway/bin/railway`,
+  ];
+  for (const bin of candidates) {
+    try {
+      execSync(`${bin} --version`, { stdio: "ignore", timeout: 3000 });
+      return bin;
+    } catch {
+      // not found at this path — try next
+    }
+  }
+  return "railway"; // fallback: let it fail with a clear error
+}
+
+/**
+ * Returns true if two successive uptime readings are identical, indicating a
+ * frozen (hung) process that is not advancing its event loop.
+ * A tiny epsilon (0.1s) handles floating-point noise on healthy processes.
+ */
+export function isFrozenUptime(uptime1: number, uptime2: number): boolean {
+  return Math.abs(uptime2 - uptime1) < 0.1;
+}
+
 // ---------------------------------------------------------------------------
 // Step 1: Fetch metrics
 // ---------------------------------------------------------------------------
@@ -706,20 +737,35 @@ async function checkPendingPRApprovals(): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 
+async function triggerRedeploy(reason: string): Promise<void> {
+  const railwayBin = resolveRailwayBin();
+  const cmd = `${railwayBin} redeploy --service mtg-bot-v2 -y`;
+  console.error(`WATCHDOG: ${reason} — running: ${cmd}`);
+  try {
+    execSync(cmd, {
+      timeout: 30000,
+      shell: "/bin/bash",
+      env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}` },
+    });
+    console.log("Redeploy command succeeded");
+    await sendTelegram(`✅ Bot redeploy triggered (${reason})`);
+  } catch (e) {
+    const errMsg = String(e).slice(0, 300);
+    // Always log to stderr — visible in cron logs even when Telegram is broken
+    console.error(`WATCHDOG REDEPLOY FAILED: ${errMsg}`);
+    await sendTelegram(`❌ Bot redeploy failed (${reason}): ${errMsg}`);
+  }
+}
+
 async function checkBotHealth(): Promise<void> {
   console.log("Checking bot health...");
   try {
     // Fetch bot health twice, 5s apart, to detect frozen uptime
     const res1 = await fetch(`${DECK_VIEWER_URL}/api/bot-health`, { signal: AbortSignal.timeout(5000) });
     if (!res1.ok) {
-      console.log("Bot health endpoint unreachable — attempting redeploy");
+      console.error(`WATCHDOG: Bot health endpoint returned ${res1.status} — unreachable`);
       await sendTelegram("🚨 Bot unreachable — auto-redeploying...");
-      try {
-        execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
-        await sendTelegram("✅ Bot redeploy triggered");
-      } catch (e) {
-        await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
-      }
+      await triggerRedeploy("bot unreachable");
       return;
     }
 
@@ -728,16 +774,11 @@ async function checkBotHealth(): Promise<void> {
     const res2 = await fetch(`${DECK_VIEWER_URL}/api/bot-health`, { signal: AbortSignal.timeout(5000) });
     const data2 = res2.ok ? await res2.json() : null;
 
-    // Frozen uptime = process is dead, Railway serving cached response
-    if (data2 && data1.uptime === data2.uptime) {
-      console.log(`Bot has frozen uptime (${data1.uptime}s) — auto-redeploying`);
+    // Frozen uptime = process is hung (not crashing, just not advancing event loop)
+    if (data2 && isFrozenUptime(data1.uptime, data2.uptime)) {
+      console.error(`WATCHDOG: Bot has frozen uptime (${data1.uptime}s unchanged over 5s) — redeploying`);
       await sendTelegram(`🚨 Bot frozen (uptime stuck at ${Math.round(data1.uptime)}s) — auto-redeploying...`);
-      try {
-        execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
-        await sendTelegram("✅ Bot redeploy triggered");
-      } catch (e) {
-        await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
-      }
+      await triggerRedeploy(`frozen uptime ${Math.round(data1.uptime)}s`);
       return;
     }
 
@@ -748,14 +789,9 @@ async function checkBotHealth(): Promise<void> {
 
     console.log(`Bot healthy: uptime=${Math.round(data1.uptime)}s polls=${data1.pollCount}`);
   } catch (err) {
-    console.log("Bot health check failed:", err);
+    console.error("WATCHDOG: Bot health check threw — attempting redeploy:", err);
     await sendTelegram("🚨 Bot health check failed — attempting redeploy...");
-    try {
-      execSync("railway redeploy --service mtg-bot-v2 -y", { timeout: 30000 });
-      await sendTelegram("✅ Bot redeploy triggered");
-    } catch (e) {
-      await sendTelegram(`❌ Bot redeploy failed: ${String(e).slice(0, 200)}`);
-    }
+    await triggerRedeploy("health check error");
   }
 }
 
