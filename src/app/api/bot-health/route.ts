@@ -9,6 +9,7 @@ export async function GET() {
   try {
     const res = await fetch(botUrl, {
       signal: AbortSignal.timeout(5000),
+      cache: "no-store",
     });
 
     if (!res.ok) {
