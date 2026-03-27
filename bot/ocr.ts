@@ -494,18 +494,59 @@ async function mergeSplitCards(decklist: string): Promise<string> {
   return result.join("\n");
 }
 
+/** Minimum mainboard cards required to accept an OCR result as a real decklist. */
+export const MIN_MAINBOARD_CARDS = 10;
+
+/**
+ * Given a list of OcrResults (some may be null), return the first one with
+ * >= MIN_MAINBOARD_CARDS mainboard cards, or the one with the highest card count,
+ * or null if the list is empty / all null.
+ *
+ * This is the selection algorithm for multi-image fallback — exported for testing.
+ */
+export function selectBestOcrResult(results: Array<OcrResult | null>): OcrResult | null {
+  let best: OcrResult | null = null;
+  for (const result of results) {
+    if (!result) continue;
+    const count = countCards(result.decklist);
+    if (count >= MIN_MAINBOARD_CARDS) return result;
+    if (!best || count > countCards(best.decklist)) best = result;
+  }
+  return best;
+}
+
 /**
  * Try to extract a decklist from multiple image URLs.
- * Returns the first successful extraction, or null.
+ * Tries each URL in order. Accepts the first result with >= 10 mainboard cards.
+ * If no URL yields enough cards, returns the best result seen (highest card count),
+ * or null if nothing was extracted at all.
+ *
+ * This handles the common failure mode where image[0] is card art and yields
+ * too few cards, while image[1] or image[2] contains the actual decklist.
  */
 export async function extractDecklistFromImages(imageUrls: string[]): Promise<OcrResult | null> {
+  let best: OcrResult | null = null;
+
   for (const url of imageUrls) {
+    let result: OcrResult | null = null;
     try {
-      const result = await extractDecklistFromImage(url);
-      if (result) return result;
+      result = await extractDecklistFromImage(url);
     } catch (err) {
       console.error(`OCR failed for ${url}:`, err);
+      continue;
     }
+
+    if (!result) continue;
+
+    const mainCount = countCards(result.decklist);
+    if (mainCount >= MIN_MAINBOARD_CARDS) return result;
+
+    // Keep best result seen so far (highest card count)
+    if (!best || mainCount > countCards(best.decklist)) {
+      best = result;
+    }
+    console.log(`   ⚠️  OCR image ${url} yielded only ${mainCount} mainboard cards — trying next image`);
   }
-  return null;
+
+  return best;
 }
