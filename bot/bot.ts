@@ -64,6 +64,35 @@ export function addToProcessed(id: string): void {
   processed.add(id);
 }
 
+/**
+ * Load replied conversation IDs from disk.
+ * Rotates the file to the last maxLines entries if it exceeds that count.
+ * Returns the list of conversation IDs read (not prefixed).
+ * Silently ignores missing files.
+ */
+export function loadRepliedConversations(file: string, maxLines: number): string[] {
+  try {
+    let lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
+    if (lines.length > maxLines) {
+      lines = lines.slice(-maxLines);
+      fs.writeFileSync(file, lines.join("\n") + "\n");
+    }
+    return lines;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Append a single conversation ID to the replied-conversations file.
+ * Silently ignores write errors.
+ */
+export function appendRepliedConversation(file: string, convId: string): void {
+  try {
+    fs.appendFileSync(file, `${convId}\n`);
+  } catch {}
+}
+
 let sinceId: string | undefined;
 
 // Health counters — exposed via the health server
@@ -158,17 +187,11 @@ async function main() {
   } catch {}
 
   // Restore replied conversation IDs from disk to prevent re-replies after restart
-  try {
-    let lines = fs.readFileSync(REPLIED_FILE, "utf8").trim().split("\n").filter(Boolean);
-    if (lines.length > MAX_REPLIED_LINES) {
-      lines = lines.slice(-MAX_REPLIED_LINES);
-      fs.writeFileSync(REPLIED_FILE, lines.join("\n") + "\n");
-    }
-    for (const id of lines) {
-      addToProcessed(`conv:${id}`);
-    }
-    console.log(`   Restored ${lines.length} replied conversation IDs`);
-  } catch {}
+  const repliedIds = loadRepliedConversations(REPLIED_FILE, MAX_REPLIED_LINES);
+  for (const id of repliedIds) {
+    addToProcessed(`conv:${id}`);
+  }
+  console.log(`   Restored ${repliedIds.length} replied conversation IDs`);
 
   console.log("   Polling for mentions...\n");
 
@@ -519,7 +542,7 @@ async function handleMention(
 
       // Persist conversation ID so we don't re-reply after restart
       if (mention.conversationId) {
-        try { fs.appendFileSync(REPLIED_FILE, `${mention.conversationId}\n`); } catch {}
+        appendRepliedConversation(REPLIED_FILE, mention.conversationId);
       }
 
       // Notify on Telegram after every successful reply
