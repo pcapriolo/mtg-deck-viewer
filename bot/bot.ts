@@ -294,6 +294,29 @@ async function poll(reader: ReturnType<typeof createClient>["reader"], writer: R
     addToProcessed(mention.id);
     if (mention.conversationId) addToProcessed(convKey);
 
+    // Persistent dedup: check the stats API (JSONL on web app) to see if
+    // we already replied to this tweet. Survives container restarts.
+    const checkTweetId = mention.inReplyToId ?? mention.id;
+    try {
+      const dedupRes = await fetch(
+        `${DECK_VIEWER_URL}/api/stats?hours=168&limit=500`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      if (dedupRes.ok) {
+        const dedupData = await dedupRes.json();
+        const alreadyReplied = (dedupData.interactions ?? []).some(
+          (ix: { tweetId: string; replySent: boolean }) =>
+            ix.tweetId === checkTweetId && ix.replySent
+        );
+        if (alreadyReplied) {
+          console.log(`   ⏭️  Dedup: already replied to tweet ${checkTweetId} — skipping mention ${mention.id}`);
+          continue;
+        }
+      }
+    } catch {
+      console.log(`   ⚠️  Dedup check failed (stats API unreachable) — proceeding`);
+    }
+
     console.log(`📩 Mention from @${mention.authorUsername}: "${mention.text.slice(0, 80)}..."`);
 
     try {
@@ -572,24 +595,6 @@ async function handleMention(
 
     console.log(`   🔗 ${deckUrl}`);
     console.log(`   📝 ${replyText.split("\n")[0]}`);
-
-    // Step 6.5: Database dedup — check if we already replied to this conversation
-    if (mention.conversationId) {
-      try {
-        const dedupRes = await fetch(
-          `${DECK_VIEWER_URL}/api/stats?conversationId=${encodeURIComponent(mention.conversationId)}`,
-        );
-        if (dedupRes.ok) {
-          const dedupData = await dedupRes.json();
-          if (dedupData.alreadyReplied) {
-            console.log(`   ⏭️  DB dedup: already replied to conversation ${mention.conversationId} — skipping`);
-            return;
-          }
-        }
-      } catch {
-        // Stats API unreachable — proceed with reply (better than blocking)
-      }
-    }
 
     // Step 7: Quality gate — skip reply if deck looks bad
     const gate = checkReplyQuality({
