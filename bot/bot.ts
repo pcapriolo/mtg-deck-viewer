@@ -195,6 +195,18 @@ async function main() {
 
   console.log("   Polling for mentions...\n");
 
+  // Internal liveness watchdog — if the poll loop hasn't completed in 5 minutes,
+  // the event loop is frozen. Exit so Railway's ALWAYS restart policy revives us.
+  let lastPollCompleted = Date.now();
+  const LIVENESS_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  setInterval(() => {
+    const staleMs = Date.now() - lastPollCompleted;
+    if (staleMs > LIVENESS_TIMEOUT) {
+      console.error(`💀 LIVENESS: poll loop stuck for ${Math.round(staleMs / 1000)}s — exiting for restart`);
+      process.exit(1);
+    }
+  }, 60_000);
+
   // Periodic heartbeat — logs memory/uptime every 30s so we can see what happens before a kill
   setInterval(() => {
     const mem = process.memoryUsage();
@@ -216,6 +228,7 @@ async function main() {
       console.log(`   🔄 Poll #${pollCount + 1} starting...`);
       await poll(reader, writer);
       pollCount++;
+      lastPollCompleted = Date.now();
       console.log(`   ✅ Poll #${pollCount} done. Mentions processed: ${processed.size}`);
     } catch (err) {
       pollCount++;

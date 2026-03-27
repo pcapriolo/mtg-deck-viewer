@@ -751,9 +751,38 @@ async function triggerRedeploy(reason: string): Promise<void> {
     await sendTelegram(`✅ Bot redeploy triggered (${reason})`);
   } catch (e) {
     const errMsg = String(e).slice(0, 300);
-    // Always log to stderr — visible in cron logs even when Telegram is broken
     console.error(`WATCHDOG REDEPLOY FAILED: ${errMsg}`);
     await sendTelegram(`❌ Bot redeploy failed (${reason}): ${errMsg}`);
+    return; // skip verification if redeploy command itself failed
+  }
+
+  // Verify recovery: wait 60s, then check if the bot is actually alive
+  console.log("WATCHDOG: Waiting 60s for bot to start...");
+  await new Promise((r) => setTimeout(r, 60_000));
+  try {
+    const res = await fetch(`${DECK_VIEWER_URL}/api/bot-health`, {
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.uptime < 120 && data.pollCount > 0) {
+        console.log(`WATCHDOG: Bot recovered — uptime=${Math.round(data.uptime)}s polls=${data.pollCount}`);
+        await sendTelegram(`✅ Bot recovered after redeploy. Uptime: ${Math.round(data.uptime)}s, polls: ${data.pollCount}`);
+      } else if (data.uptime < 120) {
+        console.log(`WATCHDOG: Bot restarted but no polls yet — uptime=${Math.round(data.uptime)}s`);
+        await sendTelegram(`⚠️ Bot restarted (uptime: ${Math.round(data.uptime)}s) but 0 polls yet. May need more time.`);
+      } else {
+        console.error(`WATCHDOG: Bot still stale after redeploy — uptime=${Math.round(data.uptime)}s`);
+        await sendTelegram(`🚨 Bot still stale after redeploy (uptime: ${Math.round(data.uptime)}s). Manual intervention needed.`);
+      }
+    } else {
+      console.error(`WATCHDOG: Bot health returned ${res.status} after redeploy`);
+      await sendTelegram(`🚨 Bot unreachable after redeploy (HTTP ${res.status}). Manual intervention needed.`);
+    }
+  } catch (err) {
+    console.error("WATCHDOG: Post-redeploy health check failed:", err);
+    await sendTelegram("🚨 Post-redeploy health check failed. Manual intervention needed.");
   }
 }
 
