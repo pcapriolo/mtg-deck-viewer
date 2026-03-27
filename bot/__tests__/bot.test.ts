@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { extractDecklistFromText, checkReplyQuality, addToProcessed, processed } from "../bot";
+import { extractDecklistFromText, checkReplyQuality, addToProcessed, processed, countMainboardCards } from "../bot";
 import { summarizeDecklist, composeReplyText, extractDeckName } from "../encoder";
 import { parseDeckList } from "../../src/lib/parser";
 
@@ -174,6 +174,43 @@ describe("extractDeckName", () => {
 
   it("handles case-insensitive Name/name", () => {
     expect(extractDeckName("name: My Deck\n4 Card")).toBe("My Deck");
+  });
+});
+
+describe("countMainboardCards", () => {
+  it("counts mainboard cards correctly for a standard 60-card deck", () => {
+    const text =
+      "4 Lightning Bolt\n4 Counterspell\n4 Brainstorm\n4 Force of Will\n" +
+      "4 Ponder\n4 Preordain\n4 Gitaxian Probe\n4 Daze\n4 Delver of Secrets\n" +
+      "4 Volcanic Island\n4 Island\n4 Mountain\n4 Flooded Strand\n4 Scalding Tarn\n" +
+      "4 Misty Rainforest";
+    expect(countMainboardCards(text)).toBe(60);
+  });
+
+  it("does not count sideboard cards in mainboard total", () => {
+    const text =
+      "4 Lightning Bolt\n4 Counterspell\n4 Brainstorm\n" +
+      "Sideboard\n4 Pyroblast\n4 Red Elemental Blast";
+    expect(countMainboardCards(text)).toBe(12);
+  });
+
+  it("returns 0 for empty string", () => {
+    expect(countMainboardCards("")).toBe(0);
+  });
+
+  it("returns low count for garbage OCR output with few cards", () => {
+    // Simulates OCR returning only 4 cards (should fail sanity check)
+    const text = "4 Lightning Bolt\n2 Counterspell";
+    expect(countMainboardCards(text)).toBe(6);
+    expect(countMainboardCards(text)).toBeLessThan(10);
+  });
+
+  it("handles Arena set/collector suffixes via parser", () => {
+    const text =
+      "4 Faithless Looting (STA) 38\n4 Blackcleave Cliffs (ONE) 248\n" +
+      "2 Mana Confluence (JOU) 163\n4 Unholy Annex (DSK) 112";
+    // parseDeckList strips the Arena suffix so these count as 4+4+2+4=14
+    expect(countMainboardCards(text)).toBe(14);
   });
 });
 
