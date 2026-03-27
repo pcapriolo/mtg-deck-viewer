@@ -23,7 +23,7 @@
 
 import "dotenv/config";
 import fs from "node:fs";
-import { parseDeckList } from "../src/lib/parser";
+import { parseDeckList, mainboardEntries, totalCards } from "../src/lib/parser";
 import { createClient, fetchMentions, fetchTweet, replyWithLink, MentionTweet } from "./twitter";
 import { extractDecklistFromImages, OcrResult } from "./ocr";
 import {
@@ -415,6 +415,50 @@ async function handleMention(
     }
     ocrTimeMs = Date.now() - ocrStart;
 
+    // Step 3.5: OCR sanity check — skip early if too few mainboard cards extracted.
+    // Prevents expensive Scryfall+reconciliation calls when OCR produces garbage output.
+    // (The quality gate later also checks mainboardCount < 10, but that's after enrichment.)
+    if (decklistText) {
+      const rawMainCount = countMainboardCards(decklistText);
+      if (rawMainCount < 10) {
+        console.log(`   ⛔ OCR sanity check failed: only ${rawMainCount} mainboard cards extracted. Skipping.`);
+        const skipNotified = await sendTelegramAlert(
+          `⛔ *OCR sanity check failed* for @${mention.authorUsername}\nReason: Only ${rawMainCount} mainboard cards extracted (need 10+)\nTweet: https://x.com/i/status/${mention.id}`
+        );
+        await trackNotification(skipNotified);
+        logInteraction({
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          tweetId: mention.id,
+          authorId: mention.authorId,
+          authorUsername: mention.authorUsername,
+          tweetText: mention.text.slice(0, 280),
+          imageCount,
+          ocrSuccess: false,
+          ocrPassCount: ocrResult?.passCount ?? 1,
+          ocrCardsExtracted: rawMainCount,
+          ocrTimeMs,
+          ocrErrors: [`OCR sanity check: only ${rawMainCount} mainboard cards`],
+          scryfallCardsResolved: 0,
+          scryfallCardsNotFound: [],
+          scryfallTimeMs: 0,
+          replySent: false,
+          replyFormatVariant: variant,
+          replyTimeMs: 0,
+          totalTimeMs: Date.now() - startTime,
+          mainboardCount: rawMainCount,
+          sideboardCount: 0,
+          utmId,
+          errors,
+          ocrExpectedCount: ocrResult?.expectedCount ?? null,
+          ocrCorrectionRan: ocrResult?.correctionRan ?? false,
+          ocrCorrectionAccepted: ocrResult?.correctionAccepted ?? false,
+          imageUrl: ocrResult?.imageUrl ?? null,
+        });
+        return;
+      }
+    }
+
     // Step 4: Enrich with Scryfall data
     const ocrDeckName = extractDeckName(decklistText);
     deckName = ocrDeckName;
@@ -681,6 +725,15 @@ async function collectThreadContext(
   }
 
   return { images, texts };
+}
+
+/**
+ * Count mainboard cards in a raw decklist string using the shared parser.
+ * Used for early OCR sanity check before expensive Scryfall enrichment.
+ */
+export function countMainboardCards(decklistText: string): number {
+  const parsed = parseDeckList(decklistText);
+  return totalCards(mainboardEntries(parsed));
 }
 
 export function checkReplyQuality(params: {
