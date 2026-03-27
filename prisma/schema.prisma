@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Interaction {
+  id              String   @id @default(uuid())
+  tweetId         String   @map("tweet_id")
+  conversationId  String?  @map("conversation_id")
+  authorId        String?  @map("author_id")
+  authorUsername  String?  @map("author_username")
+  tweetText       String?  @map("tweet_text")
+  imageCount      Int      @default(0) @map("image_count")
+  imageUrl        String?  @map("image_url")
+
+  // OCR
+  ocrSuccess            Boolean @default(false) @map("ocr_success")
+  ocrPassCount          Int     @default(0) @map("ocr_pass_count")
+  ocrCardsExtracted     Int     @default(0) @map("ocr_cards_extracted")
+  ocrTimeMs             Int     @default(0) @map("ocr_time_ms")
+  ocrExpectedCount      Int?    @map("ocr_expected_count")
+  ocrCorrectionRan      Boolean @default(false) @map("ocr_correction_ran")
+  ocrCorrectionAccepted Boolean @default(false) @map("ocr_correction_accepted")
+
+  // Scryfall
+  scryfallCardsResolved  Int      @default(0) @map("scryfall_cards_resolved")
+  scryfallCardsNotFound  String[] @default([]) @map("scryfall_cards_not_found")
+  scryfallTimeMs         Int      @default(0) @map("scryfall_time_ms")
+
+  // Reply
+  replySent     Boolean @default(false) @map("reply_sent")
+  replyTweetId  String? @map("reply_tweet_id")
+  replyVariant  String? @map("reply_variant")
+  replyTimeMs   Int     @default(0) @map("reply_time_ms")
+
+  // Deck
+  deckName      String? @map("deck_name")
+  deckUrl       String? @map("deck_url")
+  decklistText  String? @map("decklist_text")
+  mainboardCount Int    @default(0) @map("mainboard_count")
+  sideboardCount Int    @default(0) @map("sideboard_count")
+
+  // Timing
+  totalTimeMs   Int     @default(0) @map("total_time_ms")
+  utmId         String? @map("utm_id")
+
+  // Healing
+  healingRan      Boolean @default(false) @map("healing_ran")
+  healingAccepted Boolean @default(false) @map("healing_accepted")
+
+  // Feedback
+  userFeedback    String?  @map("user_feedback")
+  feedbackApplied Boolean  @default(false) @map("feedback_applied")
+
+  // Metadata
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("interactions")
+  @@index([tweetId], name: "idx_interactions_tweet_id")
+  @@index([conversationId], name: "idx_interactions_conversation_id")
+  @@index([createdAt], name: "idx_interactions_created_at")
+}
+
+model Engagement {
+  id        String   @id @default(uuid())
+  utmId     String   @map("utm_id")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("engagements")
+  @@index([utmId], name: "idx_engagements_utm_id")
+}

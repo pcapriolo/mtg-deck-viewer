@@ -1,19 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import fs from "fs";
 
-// Mock fs before importing the route
-vi.mock("fs", () => {
-  return {
-    default: {
-      existsSync: vi.fn(() => false),
-      mkdirSync: vi.fn(),
-      appendFileSync: vi.fn(),
-    },
-    existsSync: vi.fn(() => false),
-    mkdirSync: vi.fn(),
-    appendFileSync: vi.fn(),
-  };
-});
+// Mock Prisma before importing the route
+const mockCreate = vi.fn().mockResolvedValue({ id: "test-id" });
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    engagement: { create: (...args: unknown[]) => mockCreate(...args) },
+  },
+}));
 
 import { POST } from "@/app/api/track/route";
 import { NextRequest } from "next/server";
@@ -38,38 +31,22 @@ describe("POST /api/track", () => {
     expect(json.error).toContain("utmId");
   });
 
-  it("appends engagement event to JSONL", async () => {
-    const res = await POST(makeRequest({ utmId: "utm-123", timestamp: "2026-03-23T10:00:00Z" }));
+  it("creates engagement record in database", async () => {
+    const res = await POST(makeRequest({ utmId: "utm-123" }));
     expect(res.status).toBe(200);
 
-    expect(fs.appendFileSync).toHaveBeenCalledTimes(1);
-    const written = (fs.appendFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    const parsed = JSON.parse(written.trim());
-    expect(parsed.utmId).toBe("utm-123");
-    expect(parsed.timestamp).toBe("2026-03-23T10:00:00Z");
-    expect(parsed.userAgent).toBe("TestBot/1.0");
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    const data = mockCreate.mock.calls[0][0].data;
+    expect(data.utmId).toBe("utm-123");
+    expect(data.userAgent).toBe("TestBot/1.0");
   });
 
-  it("adds server timestamp when not provided", async () => {
-    const before = new Date().toISOString();
-    const res = await POST(makeRequest({ utmId: "utm-456" }));
-    expect(res.status).toBe(200);
-
-    const written = (fs.appendFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    const parsed = JSON.parse(written.trim());
-    expect(parsed.utmId).toBe("utm-456");
-    // Server timestamp should be recent
-    expect(parsed.timestamp >= before).toBe(true);
-  });
-
-  it("handles write errors gracefully", async () => {
-    (fs.appendFileSync as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
-      throw new Error("Disk full");
-    });
+  it("handles database errors gracefully", async () => {
+    mockCreate.mockRejectedValueOnce(new Error("Connection refused"));
 
     const res = await POST(makeRequest({ utmId: "utm-789" }));
     expect(res.status).toBe(500);
     const json = await res.json();
-    expect(json.error).toBe("Disk full");
+    expect(json.error).toBe("Connection refused");
   });
 });

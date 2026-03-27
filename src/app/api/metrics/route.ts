@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import { ensureMetricsDir, metricsFilePath, rotateOldFiles } from "@/lib/metrics-storage";
+import { prisma } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,16 +12,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const dir = ensureMetricsDir();
-    const dateStr = new Date(body.timestamp).toISOString().slice(0, 10);
-    const filePath = metricsFilePath(dateStr);
+    await prisma.interaction.create({
+      data: {
+        tweetId: body.tweetId,
+        conversationId: body.conversationId ?? null,
+        authorId: body.authorId ?? null,
+        authorUsername: body.authorUsername ?? null,
+        tweetText: body.tweetText?.slice(0, 280) ?? null,
+        imageCount: body.imageCount ?? 0,
+        imageUrl: body.imageUrl ?? null,
 
-    // Ensure dir exists (metricsFilePath uses getMetricsDir, not ensureMetricsDir)
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(filePath, JSON.stringify(body) + "\n");
+        ocrSuccess: body.ocrSuccess ?? false,
+        ocrPassCount: body.ocrPassCount ?? 0,
+        ocrCardsExtracted: body.ocrCardsExtracted ?? 0,
+        ocrTimeMs: body.ocrTimeMs ?? 0,
+        ocrExpectedCount: body.ocrExpectedCount ?? null,
+        ocrCorrectionRan: body.ocrCorrectionRan ?? false,
+        ocrCorrectionAccepted: body.ocrCorrectionAccepted ?? false,
 
-    // Rotate old files (at most once per hour)
-    rotateOldFiles();
+        scryfallCardsResolved: body.scryfallCardsResolved ?? 0,
+        scryfallCardsNotFound: body.scryfallCardsNotFound ?? [],
+        scryfallTimeMs: body.scryfallTimeMs ?? 0,
+
+        replySent: body.replySent ?? false,
+        replyTweetId: body.replyTweetId ?? null,
+        replyVariant: body.replyFormatVariant ?? null,
+        replyTimeMs: body.replyTimeMs ?? 0,
+
+        deckName: body.deckName ?? null,
+        deckUrl: body.deckUrl ?? null,
+        decklistText: body.decklistText ?? null,
+        mainboardCount: body.mainboardCount ?? 0,
+        sideboardCount: body.sideboardCount ?? 0,
+
+        totalTimeMs: body.totalTimeMs ?? 0,
+        utmId: body.utmId ?? null,
+
+        healingRan: body.healingRan ?? false,
+        healingAccepted: body.healingAccepted ?? false,
+
+        createdAt: new Date(body.timestamp),
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -30,6 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const message = err instanceof Error ? err.message : "Write failed";
+    console.error("Metrics write error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

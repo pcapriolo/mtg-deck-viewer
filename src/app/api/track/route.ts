@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import { ensureMetricsDir, engagementFilePath } from "@/lib/metrics-storage";
+import { prisma } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,17 +12,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const timestamp = body.timestamp || new Date().toISOString();
     const userAgent = request.headers.get("user-agent") || "";
 
-    const event = {
-      utmId: body.utmId,
-      timestamp,
-      userAgent,
-    };
-
-    ensureMetricsDir();
-    fs.appendFileSync(engagementFilePath(), JSON.stringify(event) + "\n");
+    await prisma.engagement.create({
+      data: {
+        utmId: body.utmId,
+        userAgent,
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -31,6 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const message = err instanceof Error ? err.message : "Write failed";
+    console.error("Track error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

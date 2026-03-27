@@ -573,6 +573,24 @@ async function handleMention(
     console.log(`   🔗 ${deckUrl}`);
     console.log(`   📝 ${replyText.split("\n")[0]}`);
 
+    // Step 6.5: Database dedup — check if we already replied to this conversation
+    if (mention.conversationId) {
+      try {
+        const dedupRes = await fetch(
+          `${DECK_VIEWER_URL}/api/stats?conversationId=${encodeURIComponent(mention.conversationId)}`,
+        );
+        if (dedupRes.ok) {
+          const dedupData = await dedupRes.json();
+          if (dedupData.alreadyReplied) {
+            console.log(`   ⏭️  DB dedup: already replied to conversation ${mention.conversationId} — skipping`);
+            return;
+          }
+        }
+      } catch {
+        // Stats API unreachable — proceed with reply (better than blocking)
+      }
+    }
+
     // Step 7: Quality gate — skip reply if deck looks bad
     const gate = checkReplyQuality({
       ocrCardsExtracted,
@@ -658,6 +676,9 @@ async function handleMention(
     ocrCorrectionRan: ocrResult?.correctionRan ?? false,
     ocrCorrectionAccepted: ocrResult?.correctionAccepted ?? false,
     imageUrl: ocrResult?.imageUrl ?? null,
+    conversationId: mention.conversationId,
+    decklistText: decklistText ?? undefined,
+    deckUrl: deckUrl ?? undefined,
   });
 }
 

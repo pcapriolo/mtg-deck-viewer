@@ -34,6 +34,13 @@ export interface InteractionLog {
   ocrCorrectionRan: boolean;
   ocrCorrectionAccepted: boolean;
   imageUrl: string | null;
+  // Shared state
+  conversationId?: string;
+  decklistText?: string;
+  deckUrl?: string;
+  // Healing
+  healingRan?: boolean;
+  healingAccepted?: boolean;
   // Post-reply cleanup
   deleted?: boolean;
   deletedReason?: string;
