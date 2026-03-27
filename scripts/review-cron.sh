@@ -7,4 +7,7 @@
 
 cd /Users/paulcapriolo/MTG/deck-viewer
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+if [ -f ".env.local" ]; then
+    set -a; source ".env.local"; set +a
+fi
 npx tsx scripts/review-cron.ts
