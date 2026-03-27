@@ -591,6 +591,42 @@ Output as JSON:
     return;
   }
 
+  // Run eval regression check
+  let evalResult = "not run";
+  try {
+    run("npm run eval");
+    evalResult = "PASS (no regressions)";
+  } catch {
+    evalResult = "REGRESSION DETECTED";
+  }
+
+  // Save feedback as verified eval case
+  try {
+    const evalDir = `./test-fixtures/evals/${new Date().toISOString().slice(0, 10)}_feedback_${interaction.tweetId.slice(-8)}`;
+    fs.mkdirSync(evalDir, { recursive: true });
+    fs.writeFileSync(`${evalDir}/metadata.json`, JSON.stringify({
+      tweetId: interaction.tweetId,
+      authorUsername: "user-feedback",
+      capturedAt: new Date().toISOString(),
+      inputType: interaction.imageUrl ? "image" : "text",
+      expectedCount: interaction.ocrExpectedCount ?? null,
+      actualCount: interaction.mainboardCount,
+      ocrPassCount: 0,
+      scryfallCardsNotFound: interaction.scryfallCardsNotFound ?? [],
+      correctionsApplied: {},
+      healingRan: false,
+      healingAccepted: false,
+      verified: true,
+      userFeedback: feedback,
+      diagnosis: diagnosis.diagnosis,
+    }, null, 2));
+    // Ground truth will need manual creation — save the feedback as a note for now
+    fs.writeFileSync(`${evalDir}/feedback.txt`, feedback);
+    console.log(`Saved feedback eval case: ${evalDir}`);
+  } catch (err) {
+    console.error("Failed to save eval case:", err);
+  }
+
   // Create branch + PR
   const branchName = `fix/ocr-${Date.now()}`;
   try {
@@ -599,12 +635,12 @@ Output as JSON:
     run(`git commit -m "fix(ocr): ${diagnosis.diagnosis.slice(0, 60)}"`);
     run(`git push -u origin ${branchName}`);
     const prUrl = run(
-      `gh pr create --title "fix(ocr): ${diagnosis.diagnosis.slice(0, 60)}" --body "Feedback-driven fix from review cron.\n\nUser feedback: ${feedback}\nDiagnosis: ${diagnosis.diagnosis}\nPrompt addition: ${diagnosis.promptFix.slice(0, 300)}"`,
+      `gh pr create --title "fix(ocr): ${diagnosis.diagnosis.slice(0, 60)}" --body "Feedback-driven fix from review cron.\n\nUser feedback: ${feedback}\nDiagnosis: ${diagnosis.diagnosis}\nPrompt addition: ${diagnosis.promptFix.slice(0, 300)}\nEval: ${evalResult}"`,
     );
 
     // Ask user to approve merge
     const mergeMsg = await sendTelegram(
-      `🔧 Fix ready!\n\nPR: ${prUrl}\nDiagnosis: ${diagnosis.diagnosis}\nTests: PASS\n\nReply "merge" to merge or "reject" to close.`,
+      `🔧 Fix ready!\n\nPR: ${prUrl}\nDiagnosis: ${diagnosis.diagnosis}\nTests: PASS\nEval: ${evalResult}\n\nReply "merge" to merge or "reject" to close.`,
     );
 
     if (mergeMsg) {
@@ -652,7 +688,7 @@ Output as JSON:
 async function checkPendingPRApprovals(): Promise<void> {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
 
-  console.log("Checking for pending PR approval replies...");
+  console.log("Checking for pending Telegram replies (PR approvals + late feedback)...");
 
   try {
     // Get recent updates (non-blocking, 1s timeout)
@@ -673,17 +709,61 @@ async function checkPendingPRApprovals(): Promise<void> {
       const text = (msg.text ?? "").trim();
       const replyText = msg.reply_to_message?.text ?? "";
 
+      // --- Pattern A: Late deck feedback (reply to "What did I miss?") ---
+      if (replyText.includes("What did I miss?") && text && !text.match(/looks?\s*good|lgtm|ok|fine|perfect|👍|good/i)) {
+        console.log(`Late deck feedback received: "${text.slice(0, 60)}..."`);
+
+        // Find the tweet ID from the photo caption in the message chain
+        // The photo message is the one BEFORE "What did I miss?" in the thread
+        const photoCaption = msg.reply_to_message?.reply_to_message?.caption ?? "";
+        const tweetMatch = photoCaption.match(/status\/(\d+)/);
+        const imageUrlMatch = photoCaption.match(/https:\/\/pbs\.twimg\.com\S+/);
+
+        if (tweetMatch) {
+          const tweetId = tweetMatch[1];
+          console.log(`Matched to tweet ${tweetId} — fetching interaction data...`);
+
+          try {
+            // Fetch the interaction from stats to get full context
+            const statsRes = await fetch(`${DECK_VIEWER_URL}/api/stats?hours=24`);
+            const statsData = (await statsRes.json()) as StatsResponse;
+            const ix = statsData.interactions.find((i) => i.tweetId === tweetId);
+
+            if (ix) {
+              await handleFeedback(ix, text);
+            } else {
+              // Construct minimal interaction from what we know
+              await handleFeedback({
+                tweetId,
+                ocrSuccess: true,
+                ocrCardsExtracted: 0,
+                mainboardCount: 0,
+                totalTimeMs: 0,
+                imageUrl: imageUrlMatch?.[0] ?? null,
+              }, text);
+            }
+          } catch (err) {
+            console.error("Late feedback handling failed:", err);
+            await sendTelegram(`❌ Failed to process late feedback: ${String(err).slice(0, 200)}`);
+          }
+        } else {
+          console.log("Could not extract tweet ID from photo caption — skipping late feedback");
+        }
+        continue;
+      }
+
+      // --- Pattern B: PR approval commands ---
       let prNumber: string | null = null;
       let command: string | null = null;
 
-      // Pattern 1: Swipe-reply to a PR notification
+      // Swipe-reply to a PR notification
       const replyPrMatch = replyText.match(/PR\s*#(\d+)/i);
       if (replyPrMatch) {
         prNumber = replyPrMatch[1];
         command = text.toLowerCase();
       }
 
-      // Pattern 2: Standalone message like "merge 5", "merge #5", "reject #5", "diff 5"
+      // Standalone message like "merge 5", "merge #5", "reject #5", "diff 5"
       if (!prNumber) {
         const standaloneMatch = text.match(/^(merge|reject|close|cancel|diff|show|view|approve|lgtm|ship|yes|no)\s*#?(\d+)$/i);
         if (standaloneMatch) {
@@ -729,7 +809,7 @@ async function checkPendingPRApprovals(): Promise<void> {
       );
     }
   } catch (err) {
-    console.error("PR approval check failed:", err);
+    console.error("Telegram reply check failed:", err);
   }
 }
 
