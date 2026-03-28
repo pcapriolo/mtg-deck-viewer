@@ -606,7 +606,11 @@ async function handleMention(
       expectedBaseUrl: DECK_VIEWER_URL,
     });
 
-    if (!gate.pass) {
+    // Kill switch: pause all replies while improving eval/OCR accuracy
+    const REPLIES_PAUSED = process.env.REPLIES_PAUSED === "true";
+    if (REPLIES_PAUSED) {
+      console.log(`   ⏸️  Replies paused (REPLIES_PAUSED=true). Would have replied to ${mention.id}.`);
+    } else if (!gate.pass) {
       console.log(`   ⛔ Quality gate failed: ${gate.reason}. Skipping reply.`);
       const skipNotified = await sendTelegramAlert(
         `⛔ *Skipped reply* to @${mention.authorUsername}\nReason: ${gate.reason}\nTweet: https://x.com/i/status/${mention.id}`
