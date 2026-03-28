@@ -65,6 +65,22 @@ model Interaction {
   @@index([createdAt], name: "idx_interactions_created_at")
 }
 
+model EvalRun {
+  id                String   @id @default(uuid())
+  ranAt             DateTime @default(now()) @map("ran_at")
+  caseCount         Int      @map("case_count")
+  cardNameAccuracy  Float    @map("card_name_accuracy")
+  quantityAccuracy  Float    @map("quantity_accuracy")
+  countMatchRate    Float    @map("count_match_rate")
+  scryfallResolved  Float    @map("scryfall_resolved")
+  triggeredBy       String?  @map("triggered_by")
+  commitSha         String?  @map("commit_sha")
+  details           Json?
+
+  @@map("eval_runs")
+  @@index([ranAt], name: "idx_eval_runs_ran_at")
+}
+
 model Engagement {
   id        String   @id @default(uuid())
   utmId     String   @map("utm_id")

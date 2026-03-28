@@ -148,9 +148,21 @@ function statusBadge(status: string): { label: string; color: string } {
 
 export const dynamic = "force-dynamic";
 
+interface EvalRun {
+  ranAt: string;
+  caseCount: number;
+  cardNameAccuracy: number;
+  quantityAccuracy: number;
+  countMatchRate: number;
+  scryfallResolved: number;
+  triggeredBy?: string;
+  commitSha?: string;
+}
+
 export default async function StatusPage() {
   let data: AgentStatusData | null = null;
   let botHealth: BotHealth | null = null;
+  let evalRuns: EvalRun[] = [];
 
   try {
     const baseUrl =
@@ -159,9 +171,10 @@ export default async function StatusPage() {
         ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
         : "http://localhost:3000");
 
-    const [agentRes, botRes] = await Promise.all([
+    const [agentRes, botRes, evalRes] = await Promise.all([
       fetch(`${baseUrl}/api/agent-status`, { cache: "no-store" }),
       fetch(`${baseUrl}/api/bot-health`, { cache: "no-store" }).catch(() => null),
+      fetch(`${baseUrl}/api/eval-scores?limit=30`, { cache: "no-store" }).catch(() => null),
     ]);
 
     if (agentRes.ok) {
@@ -169,6 +182,10 @@ export default async function StatusPage() {
     }
     if (botRes?.ok) {
       botHealth = await botRes.json();
+    }
+    if (evalRes?.ok) {
+      const evalData = await evalRes.json();
+      evalRuns = evalData.runs ?? [];
     }
   } catch {
     // API not available
@@ -246,6 +263,71 @@ export default async function StatusPage() {
           </div>
         </div>
       </div>
+
+      {/* ── OCR Accuracy ── */}
+      {evalRuns.length > 0 && (() => {
+        const latest = evalRuns[0];
+        const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+        // Trend: compare latest to oldest in the set
+        const oldest = evalRuns[evalRuns.length - 1];
+        const trend = (curr: number, prev: number) => {
+          const diff = curr - prev;
+          if (Math.abs(diff) < 0.005) return "→";
+          return diff > 0 ? "↑" : "↓";
+        };
+        const trendColor = (curr: number, prev: number) => {
+          const diff = curr - prev;
+          if (Math.abs(diff) < 0.005) return "text-gray-400";
+          return diff > 0 ? "text-green-400" : "text-red-400";
+        };
+        // SVG sparkline data (reversed so oldest is left)
+        const sparkData = [...evalRuns].reverse();
+        const sparkW = 200, sparkH = 40;
+        const toPoints = (accessor: (r: EvalRun) => number) => {
+          if (sparkData.length < 2) return "";
+          return sparkData.map((r, i) => {
+            const x = (i / (sparkData.length - 1)) * sparkW;
+            const y = sparkH - accessor(r) * sparkH;
+            return `${x},${y}`;
+          }).join(" ");
+        };
+
+        return (
+          <div className="bg-gray-900/80 border border-gray-700/50 rounded-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold text-white mb-4">OCR Accuracy</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              {[
+                { label: "Card Names", value: latest.cardNameAccuracy, prev: oldest.cardNameAccuracy },
+                { label: "Quantities", value: latest.quantityAccuracy, prev: oldest.quantityAccuracy },
+                { label: "Scryfall", value: latest.scryfallResolved, prev: oldest.scryfallResolved },
+                { label: "Count Match", value: latest.countMatchRate, prev: oldest.countMatchRate },
+              ].map((m) => (
+                <div key={m.label} className="bg-gray-800/60 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">{m.label}</p>
+                  <p className="text-2xl font-bold text-white mt-1">{pct(m.value)}</p>
+                  <p className={`text-xs mt-1 ${trendColor(m.value, m.prev)}`}>
+                    {trend(m.value, m.prev)} from {pct(m.prev)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {sparkData.length >= 2 && (
+              <div className="bg-gray-800/40 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-2">Trend ({evalRuns.length} eval runs)</p>
+                <svg viewBox={`0 0 ${sparkW} ${sparkH}`} className="w-full h-10" preserveAspectRatio="none">
+                  <polyline points={toPoints((r) => r.cardNameAccuracy)} fill="none" stroke="#4ade80" strokeWidth="1.5" />
+                  <polyline points={toPoints((r) => r.scryfallResolved)} fill="none" stroke="#60a5fa" strokeWidth="1.5" />
+                </svg>
+                <div className="flex gap-4 mt-1">
+                  <span className="text-xs text-green-400">— Card Names</span>
+                  <span className="text-xs text-blue-400">— Scryfall</span>
+                  <span className="text-xs text-gray-500 ml-auto">{latest.caseCount} cases · {latest.triggeredBy ?? "manual"}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Agent Heartbeats ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

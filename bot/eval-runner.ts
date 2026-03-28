@@ -15,9 +15,12 @@ import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import { extractDecklistFromImage, countCards } from "./ocr";
 import { fetchCards } from "./scryfall";
 import type { EvalMetadata } from "./eval-capture";
+
+const DECK_VIEWER_URL = process.env.DECK_VIEWER_URL ?? "http://localhost:3000";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EVALS_DIR = path.resolve(__dirname, "../test-fixtures/evals");
@@ -315,6 +318,43 @@ async function main() {
     console.log(`  Quantity accuracy:   ${(avg(valid.map((r) => r.quantityAccuracy)) * 100).toFixed(1)}%`);
     console.log(`  Count match:         ${valid.filter((r) => r.countMatch).length}/${valid.length}`);
     console.log(`  Scryfall resolved:   ${(avg(valid.map((r) => r.scryfallResolved)) * 100).toFixed(1)}%`);
+  }
+
+  // Save scores to database for trend tracking
+  if (valid.length > 0) {
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    let commitSha: string | undefined;
+    try { commitSha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim(); } catch {}
+
+    const triggeredBy = process.env.CI ? "ci"
+      : process.env.EVAL_TRIGGERED_BY ?? "manual";
+
+    try {
+      await fetch(`${DECK_VIEWER_URL}/api/eval-scores`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseCount: valid.length,
+          cardNameAccuracy: avg(valid.map((r) => r.cardNameAccuracy)),
+          quantityAccuracy: avg(valid.map((r) => r.quantityAccuracy)),
+          countMatchRate: valid.filter((r) => r.countMatch).length / valid.length,
+          scryfallResolved: avg(valid.map((r) => r.scryfallResolved)),
+          triggeredBy,
+          commitSha,
+          details: Object.fromEntries(
+            valid.map((r) => [r.caseId, {
+              cardNameAccuracy: r.cardNameAccuracy,
+              quantityAccuracy: r.quantityAccuracy,
+              scryfallResolved: r.scryfallResolved,
+              countMatch: r.countMatch,
+            }])
+          ),
+        }),
+      });
+      console.log("📊 Eval scores saved to database");
+    } catch {
+      console.log("⚠️  Could not save eval scores to database (API unreachable)");
+    }
   }
 
   // Baseline comparison
