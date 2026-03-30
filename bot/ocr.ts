@@ -100,7 +100,9 @@ N Card Name
 ...
 Sideboard
 N Card Name
-...`;
+...
+
+Add: 'COLUMN HEADER TOTALS: Each column in MTGGoldfish/visual viewers shows a numeric total at the top (e.g., 16, 15, 10). Use these totals as a CROSS-CHECK for each individual column — sum the quantities you read for that column and verify they match the column header number. If they do not match, re-scan that column for missed cards or miscounted stacks. A mismatch means at least one card in that column was skipped or miscounted.' Also add: 'DENSE ARTIFACT/SPELL COLUMNS: In visual deck displays, some columns contain many distinct cards each with quantity 1–3. Do not assume a column contains only one card type. Scroll through every visible title bar in the column top-to-bottom and list each unique card name separately.'`;
 
 const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. The extraction below likely has QUANTITY ERRORS. Your job is to recount every card.
 
