@@ -11,3 +11,5 @@ out/
 claude-progress.txt
 feature-backlog.json
 agent-heartbeat.json
+
+/src/generated/prisma
