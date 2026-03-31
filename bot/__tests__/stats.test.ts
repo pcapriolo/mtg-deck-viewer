@@ -74,6 +74,18 @@ Sideboard
     expect(stats.colorPips).toBe("");
     expect(stats.colors).toEqual([]);
   });
+
+  it("'Side' header (not 'Sideboard') switches to sideboard", () => {
+    const textWithSide = `4 Lightning Bolt\nSide\n2 Goblin Guide`;
+    const stats = deriveDeckStats(cards, textWithSide);
+    expect(stats.mainCount).toBe(4);
+    expect(stats.sideCount).toBe(2);
+  });
+
+  it("uses hallmarkCardName as topCard when it exists in cards map", () => {
+    const stats = deriveDeckStats(cards, "4 Lightning Bolt\n4 Goblin Guide", undefined, "Goblin Guide");
+    expect(stats.topCard?.name).toBe("Goblin Guide");
+  });
 });
 
 describe("selectTopCard", () => {
@@ -99,6 +111,12 @@ describe("selectTopCard", () => {
     };
     const top = selectTopCard(noPrices, "4 Goblin Guide", undefined);
     expect(top?.name).toBe("Goblin Guide");
+  });
+
+  it("matches namesake when deckName is a substring of a card name", () => {
+    // deckName "Carnosaur" is a substring of "Trumpeting Carnosaur"
+    const top = selectTopCard(cards, "4 Trumpeting Carnosaur\n4 Lightning Bolt", "Carnosaur");
+    expect(top?.name).toBe("Trumpeting Carnosaur");
   });
 });
 
