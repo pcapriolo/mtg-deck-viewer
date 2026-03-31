@@ -114,4 +114,119 @@ describe("fetchCards", () => {
     const result = await fetchCards(["Lightning Bolt"]);
     expect(Object.keys(result).length).toBe(0);
   });
+
+  it("resolves misspelled name via autocomplete prefix strategy", async () => {
+    // Step 1: Batch returns empty — "Lightnig Bolt" not found
+    mockFetch.mockResolvedValueOnce(scryfallResponse([]));
+    // Step 2: Fuzzy search fails
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    // Step 3: Autocomplete returns "Lightning Bolt" as candidate
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: ["Lightning Bolt"] }),
+    });
+    // Step 4: Named lookup returns the card
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        name: "Lightning Bolt",
+        colors: ["R"],
+        color_identity: ["R"],
+        type_line: "Instant",
+        prices: { usd: "1.00" },
+      }),
+    });
+
+    const result = await fetchCards(["Lightnig Bolt"]);
+    expect(result["lightning bolt"]).toBeDefined();
+    expect(result["lightning bolt"].name).toBe("Lightning Bolt");
+    // Also indexed by the misspelled name
+    expect(result["lightnig bolt"]).toBeDefined();
+  });
+
+  it("skips autocomplete candidate when Levenshtein distance exceeds 5", async () => {
+    // Batch fails
+    mockFetch.mockResolvedValueOnce(scryfallResponse([]));
+    // Fuzzy fails
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    // Autocomplete returns a very different name (distance > 5)
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: ["Abcdefghijklmnop"] }),
+    });
+    // Word-search strategy also returns nothing (ok: false)
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    const result = await fetchCards(["xyz"]);
+    expect(Object.keys(result).length).toBe(0);
+  });
+
+  it("returns existing card when autocomplete candidate is already in results", async () => {
+    // "Bolt" is already resolved in the batch
+    mockFetch.mockResolvedValueOnce(
+      scryfallResponse([{ name: "Lightning Bolt" }])
+    );
+    // "Lightnig Bolt" is missing — fuzzy fails
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    // Autocomplete returns "Lightning Bolt" as candidate
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: ["Lightning Bolt"] }),
+    });
+    // No named lookup needed — already in existing
+
+    const result = await fetchCards(["Lightning Bolt", "Lightnig Bolt"]);
+    expect(result["lightning bolt"]).toBeDefined();
+    // The misspelled version should resolve to the same card via autocomplete
+    expect(result["lightnig bolt"]).toBeDefined();
+    expect(result["lightnig bolt"].name).toBe("Lightning Bolt");
+  });
+
+  it("handles autocomplete API failure gracefully (no throw)", async () => {
+    // Batch fails
+    mockFetch.mockResolvedValueOnce(scryfallResponse([]));
+    // Fuzzy fails
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    // Autocomplete throws a network error
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    // Word-search: all subsequent calls fail
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+
+    await expect(fetchCards(["Lightnig Bolt"])).resolves.toBeDefined();
+  });
+
+  it("resolves via word-search strategy when autocomplete returns no candidates", async () => {
+    // Batch fails
+    mockFetch.mockResolvedValueOnce(scryfallResponse([]));
+    // Fuzzy fails
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    // Autocomplete strategy 1: tries up to 5 prefix lengths, all return empty candidates
+    const emptyAutocomplete = { ok: true, json: async () => ({ data: [] }) };
+    mockFetch.mockResolvedValueOnce(emptyAutocomplete);
+    mockFetch.mockResolvedValueOnce(emptyAutocomplete);
+    mockFetch.mockResolvedValueOnce(emptyAutocomplete);
+    mockFetch.mockResolvedValueOnce(emptyAutocomplete);
+    mockFetch.mockResolvedValueOnce(emptyAutocomplete);
+    // Word-search strategy 2: search by last word "Bolt" — returns small set
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ name: "Lightning Bolt" }, { name: "Thunderous Bolt" }],
+      }),
+    });
+    // Named lookup for the best match
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        name: "Lightning Bolt",
+        colors: ["R"],
+        color_identity: ["R"],
+        type_line: "Instant",
+        prices: { usd: "1.00" },
+      }),
+    });
+
+    const result = await fetchCards(["Lightnig Bolt"]);
+    expect(result["lightning bolt"]).toBeDefined();
+  });
 });
