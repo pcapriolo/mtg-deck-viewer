@@ -49,4 +49,16 @@ describe("POST /api/track", () => {
     const json = await res.json();
     expect(json.error).toBe("Connection refused");
   });
+
+  it("returns 400 when body is invalid JSON", async () => {
+    const req = new NextRequest("http://localhost:3000/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not valid json {[",
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe("Invalid JSON body");
+  });
 });
