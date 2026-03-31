@@ -100,7 +100,9 @@ N Card Name
 ...
 Sideboard
 N Card Name
-...`;
+...
+
+ADD a new section: COLUMN HEADER COUNTS: Some visual deck viewers (MTGO, Goldfish) display a numeric column header (e.g., '16', '15', '4') above each group of stacked cards. This number is the TOTAL card count for that column — use it as a cross-check against your per-card counts within that column. If your per-card sum does not match the column header, recount every card in that column. Also: card names in stacked layouts may be partially obscured — use visible title bar text plus partial art recognition to infer the full name, and always prefer the exact printed card name over a guess.`;
 
 const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. The extraction below likely has QUANTITY ERRORS. Your job is to recount every card.
 
