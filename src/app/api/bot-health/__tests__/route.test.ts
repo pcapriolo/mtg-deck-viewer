@@ -42,7 +42,8 @@ describe("GET /api/bot-health", () => {
     });
     const { GET } = await import("@/app/api/bot-health/route");
     const response = await GET();
-    expect(response.body).toEqual(healthData);
+    // checkedAt is added by the route to make stale responses detectable
+    expect(response.body).toMatchObject(healthData);
     expect(response.status).toBe(200);
   });
 

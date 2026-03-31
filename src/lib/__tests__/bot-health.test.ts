@@ -28,7 +28,20 @@ describe("GET /api/bot-health", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual(botData);
+    // checkedAt is added by the route to make stale responses detectable
+    expect(json).toMatchObject(botData);
+    expect(typeof json.checkedAt).toBe("string");
+  });
+
+  it("includes Cache-Control: no-store header so Railway edge does not cache the response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", uptime: 100 }),
+    });
+
+    const res = await GET();
+    expect(res.headers.get("Cache-Control")).toContain("no-store");
   });
 
   it("returns 502 when bot responds with non-ok status", async () => {
