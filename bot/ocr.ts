@@ -100,7 +100,9 @@ N Card Name
 ...
 Sideboard
 N Card Name
-...`;
+...
+
+Add this section after the STACKED CARD LAYOUTS paragraph: 'NARROW SPELL COLUMNS: In MTGO-style visual decklists, spell/artifact columns between the land column and creature columns are often NARROW (1–2 cards wide) and easy to skip. After scanning left-to-right, do a SECOND PASS specifically hunting for any column you may have skipped. Count total columns before starting. Also: the deck name may appear as a UI label like "affinity current list: 60" at the very top of the interface — extract the human-readable portion as the Name field. Column headers showing card type counts ("Lands: 16 Creatures: 11 Other: 33") confirm how many cards should be in each category — use these to validate your extraction per category, not just the total.'`;
 
 const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. The extraction below likely has QUANTITY ERRORS. Your job is to recount every card.
 
