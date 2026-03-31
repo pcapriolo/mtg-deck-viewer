@@ -23,7 +23,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 // Types
 // ---------------------------------------------------------------------------
 
-interface Interaction {
+export interface Interaction {
   tweetId: string;
   ocrSuccess: boolean;
   ocrCardsExtracted: number;
@@ -35,7 +35,7 @@ interface Interaction {
   errors?: Array<{ type: string; message: string }>;
 }
 
-interface QualityIssue {
+export interface QualityIssue {
   type: "count_mismatch" | "low_extraction" | "ocr_failure" | "scryfall_miss" | "high_latency";
   severity: "critical" | "warning";
   tweetId: string;
@@ -207,7 +207,7 @@ async function fetchStats(): Promise<StatsResponse> {
 // Step 2: Detect quality issues
 // ---------------------------------------------------------------------------
 
-function detectIssues(interactions: Interaction[]): QualityIssue[] {
+export function detectIssues(interactions: Interaction[]): QualityIssue[] {
   const issues: QualityIssue[] = [];
 
   for (const ix of interactions) {

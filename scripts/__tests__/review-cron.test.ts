@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isFrozenUptime, resolveRailwayBin } from "../review-cron";
+import { isFrozenUptime, resolveRailwayBin, detectIssues, type Interaction } from "../review-cron";
 
 describe("isFrozenUptime", () => {
   it("returns true when both uptimes are identical (frozen process)", () => {
@@ -34,5 +34,100 @@ describe("resolveRailwayBin", () => {
   it("returns a path ending with 'railway'", () => {
     const result = resolveRailwayBin();
     expect(result).toMatch(/railway$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectIssues
+// ---------------------------------------------------------------------------
+
+function makeInteraction(overrides: Partial<Interaction>): Interaction {
+  return {
+    tweetId: "tweet-1",
+    ocrSuccess: true,
+    ocrCardsExtracted: 60,
+    mainboardCount: 60,
+    totalTimeMs: 5000,
+    ...overrides,
+  };
+}
+
+describe("detectIssues", () => {
+  it("returns no issues for a healthy interaction", () => {
+    const issues = detectIssues([makeInteraction({})]);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("flags count_mismatch when extracted cards < 90% of expected", () => {
+    const issues = detectIssues([
+      makeInteraction({ ocrExpectedCount: 100, ocrCardsExtracted: 85 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("count_mismatch");
+    expect(issues[0].severity).toBe("critical");
+    expect(issues[0].expectedCount).toBe(100);
+    expect(issues[0].actualCount).toBe(85);
+  });
+
+  it("skips count_mismatch when ocrExpectedCount is null", () => {
+    const issues = detectIssues([
+      makeInteraction({ ocrExpectedCount: null, ocrCardsExtracted: 5, mainboardCount: 60 }),
+    ]);
+    // count_mismatch skipped — should not fire; interaction is otherwise healthy
+    expect(issues.every((i) => i.type !== "count_mismatch")).toBe(true);
+  });
+
+  it("flags low_extraction when mainboardCount < 40 and ocrSuccess is true", () => {
+    const issues = detectIssues([
+      makeInteraction({ mainboardCount: 30, ocrSuccess: true }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("low_extraction");
+    expect(issues[0].severity).toBe("warning");
+    expect(issues[0].actualCount).toBe(30);
+  });
+
+  it("flags ocr_failure when ocrSuccess is false", () => {
+    const issues = detectIssues([
+      makeInteraction({ ocrSuccess: false, mainboardCount: 0, ocrCardsExtracted: 0 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("ocr_failure");
+    expect(issues[0].severity).toBe("critical");
+  });
+
+  it("flags scryfall_miss when scryfallCardsNotFound has more than 3 entries", () => {
+    const issues = detectIssues([
+      makeInteraction({ scryfallCardsNotFound: ["A", "B", "C", "D"] }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("scryfall_miss");
+    expect(issues[0].severity).toBe("warning");
+  });
+
+  it("does not flag scryfall_miss when scryfallCardsNotFound has 3 or fewer entries", () => {
+    const issues = detectIssues([
+      makeInteraction({ scryfallCardsNotFound: ["A", "B", "C"] }),
+    ]);
+    expect(issues.every((i) => i.type !== "scryfall_miss")).toBe(true);
+  });
+
+  it("flags high_latency when totalTimeMs exceeds 30000", () => {
+    const issues = detectIssues([
+      makeInteraction({ totalTimeMs: 35000 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("high_latency");
+    expect(issues[0].severity).toBe("warning");
+  });
+
+  it("count_mismatch takes priority — same interaction skips low_extraction check", () => {
+    // An interaction with both count_mismatch AND low mainboardCount should
+    // only produce count_mismatch (the continue statement prevents double-flagging)
+    const issues = detectIssues([
+      makeInteraction({ ocrExpectedCount: 100, ocrCardsExtracted: 20, mainboardCount: 20 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe("count_mismatch");
   });
 });
