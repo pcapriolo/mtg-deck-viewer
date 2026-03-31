@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock Prisma before importing the route
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
+const mockCount = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     interaction: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
       findMany: (...args: unknown[]) => mockFindMany(...args),
+      count: (...args: unknown[]) => mockCount(...args),
     },
   },
 }));
@@ -56,24 +58,46 @@ describe("GET /api/stats", () => {
   describe("tweetId dedup check", () => {
     it("returns alreadyReplied:true when tweet exists with replySent:true", async () => {
       mockFindFirst.mockResolvedValueOnce({ id: "tweet-row-id" });
+      mockCount.mockResolvedValueOnce(1);
 
       const res = await GET(makeRequest({ tweetId: "tweet-456" }));
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.alreadyReplied).toBe(true);
 
-      const args = mockFindFirst.mock.calls[0][0];
-      expect(args.where.tweetId).toBe("tweet-456");
-      expect(args.where.replySent).toBe(true);
+      const findFirstArgs = mockFindFirst.mock.calls[0][0];
+      expect(findFirstArgs.where.tweetId).toBe("tweet-456");
+      expect(findFirstArgs.where.replySent).toBe(true);
     });
 
-    it("returns alreadyReplied:false when tweet not found", async () => {
+    it("returns alreadyReplied:false when tweet not found and attempt count < 3", async () => {
       mockFindFirst.mockResolvedValueOnce(null);
+      mockCount.mockResolvedValueOnce(2);
 
       const res = await GET(makeRequest({ tweetId: "tweet-000" }));
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.alreadyReplied).toBe(false);
+    });
+
+    it("returns alreadyReplied:true when attempt count reaches 3 (permanent blacklist)", async () => {
+      mockFindFirst.mockResolvedValueOnce(null);
+      mockCount.mockResolvedValueOnce(3);
+
+      const res = await GET(makeRequest({ tweetId: "tweet-retry-loop" }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.alreadyReplied).toBe(true);
+    });
+
+    it("returns alreadyReplied:true when attempt count exceeds 3", async () => {
+      mockFindFirst.mockResolvedValueOnce(null);
+      mockCount.mockResolvedValueOnce(5);
+
+      const res = await GET(makeRequest({ tweetId: "tweet-retried-many" }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.alreadyReplied).toBe(true);
     });
   });
 

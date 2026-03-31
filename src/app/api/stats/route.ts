@@ -19,11 +19,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (tweetId) {
-      const existing = await prisma.interaction.findFirst({
-        where: { tweetId, replySent: true },
-        select: { id: true },
-      });
-      return NextResponse.json({ alreadyReplied: !!existing });
+      // Blacklist if already replied OR if the tweetId has 3+ failed attempts
+      // (prevents infinite retry loop for unprocessable tweets)
+      const MAX_ATTEMPTS = 3;
+      const [replied, attemptCount] = await Promise.all([
+        prisma.interaction.findFirst({
+          where: { tweetId, replySent: true },
+          select: { id: true },
+        }),
+        prisma.interaction.count({ where: { tweetId } }),
+      ]);
+      return NextResponse.json({ alreadyReplied: !!replied || attemptCount >= MAX_ATTEMPTS });
     }
 
     // Full stats query
