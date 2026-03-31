@@ -175,7 +175,7 @@ export function resolveRailwayBin(): string {
   ];
   for (const bin of candidates) {
     try {
-      execSync(`${bin} --version`, { stdio: "ignore", timeout: 3000 });
+      execSync(`${bin} --version`, { stdio: "ignore", timeout: 500 });
       return bin;
     } catch {
       // not found at this path — try next
