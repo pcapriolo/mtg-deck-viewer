@@ -100,7 +100,9 @@ N Card Name
 ...
 Sideboard
 N Card Name
-...`;
+...
+
+Add explicit instruction: 'For MTGO-style visual deck displays, the column header shows a GROUP TOTAL (e.g., the number above each column). Use this number as a cross-check for your stack counts within that column. If your counted sum for a column does not match the column header number, recount every stack in that column before moving on. Also: some cards like split/adventure cards (e.g., Sink into Stupor // Oubliette) show a dual name — capture the full name. Artifact and spell columns often sit BETWEEN the creature and land columns — do not skip them.'`;
 
 const EVAL_PROMPT = `You are a quality checker for a Magic: The Gathering decklist extraction. The extraction below likely has QUANTITY ERRORS. Your job is to recount every card.
 
