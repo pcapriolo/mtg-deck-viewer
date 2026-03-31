@@ -1,9 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "fs";
+import path from "path";
+
+vi.mock("fs");
+
+const mockFs = vi.mocked(fs);
+
 import {
   parseJsonl,
   filterByTimeWindow,
   computeSummary,
   getDateStringsForWindow,
+  getMetricsDir,
+  ensureMetricsDir,
+  metricsFilePath,
+  engagementFilePath,
+  rotateOldFiles,
 } from "../metrics-storage";
 
 describe("parseJsonl", () => {
@@ -112,5 +124,138 @@ describe("getDateStringsForWindow", () => {
   it("returns multiple dates for a 48-hour window", () => {
     const dates = getDateStringsForWindow(48);
     expect(dates.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("getMetricsDir", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns /data/metrics and creates it when /data exists", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(true);
+    mockFs.mkdirSync = vi.fn();
+
+    const result = getMetricsDir();
+
+    expect(result).toBe("/data/metrics");
+    expect(mockFs.mkdirSync).toHaveBeenCalledWith("/data/metrics", { recursive: true });
+  });
+
+  it("returns local ./data/metrics when /data does not exist", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(false);
+    mockFs.mkdirSync = vi.fn();
+
+    const result = getMetricsDir();
+
+    expect(result).toBe(path.resolve(process.cwd(), "data", "metrics"));
+    expect(mockFs.mkdirSync).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureMetricsDir", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("creates the metrics directory and returns its path", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(false);
+    mockFs.mkdirSync = vi.fn();
+
+    const result = ensureMetricsDir();
+
+    const expected = path.resolve(process.cwd(), "data", "metrics");
+    expect(result).toBe(expected);
+    expect(mockFs.mkdirSync).toHaveBeenCalledWith(expected, { recursive: true });
+  });
+});
+
+describe("metricsFilePath", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns the correct JSONL path for a given date string", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(false);
+    mockFs.mkdirSync = vi.fn();
+
+    const result = metricsFilePath("2026-03-31");
+
+    const dir = path.resolve(process.cwd(), "data", "metrics");
+    expect(result).toBe(path.join(dir, "metrics-2026-03-31.jsonl"));
+  });
+});
+
+describe("engagementFilePath", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns the correct engagement JSONL path", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(false);
+    mockFs.mkdirSync = vi.fn();
+
+    const result = engagementFilePath();
+
+    const dir = path.resolve(process.cwd(), "data", "metrics");
+    expect(result).toBe(path.join(dir, "engagement.jsonl"));
+  });
+});
+
+describe("rotateOldFiles", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("deletes metrics files older than 30 days", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(true);
+    mockFs.mkdirSync = vi.fn();
+    vi.spyOn(mockFs, "readdirSync").mockReturnValue(["metrics-2025-01-01.jsonl", "metrics-2026-03-30.jsonl"] as unknown as ReturnType<typeof fs.readdirSync>);
+    mockFs.unlinkSync = vi.fn();
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-31T00:00:00Z"));
+    vi.advanceTimersByTime(60 * 60 * 1000 + 1); // ensure rate limit passes
+
+    rotateOldFiles();
+
+    expect(mockFs.unlinkSync).toHaveBeenCalledTimes(1);
+    expect(mockFs.unlinkSync).toHaveBeenCalledWith(expect.stringContaining("metrics-2025-01-01.jsonl"));
+  });
+
+  it("keeps metrics files within 30 days", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(true);
+    mockFs.mkdirSync = vi.fn();
+    vi.spyOn(mockFs, "readdirSync").mockReturnValue(["metrics-2026-03-30.jsonl"] as unknown as ReturnType<typeof fs.readdirSync>);
+    mockFs.unlinkSync = vi.fn();
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-31T00:00:00Z"));
+    vi.advanceTimersByTime(60 * 60 * 1000 + 1); // advance past 1-hour rate limit
+
+    rotateOldFiles();
+
+    expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("is rate-limited and skips if called within 1 hour of last run", () => {
+    mockFs.existsSync = vi.fn().mockReturnValue(true);
+    mockFs.mkdirSync = vi.fn();
+    vi.spyOn(mockFs, "readdirSync").mockReturnValue(["metrics-2025-01-01.jsonl"] as unknown as ReturnType<typeof fs.readdirSync>);
+    mockFs.unlinkSync = vi.fn();
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-31T12:00:00Z"));
+    vi.advanceTimersByTime(60 * 60 * 1000 + 1); // ensure first call passes rate limit
+
+    rotateOldFiles(); // first call — should run
+    const callsAfterFirst = (mockFs.unlinkSync as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Second call immediately after — should be rate-limited (no timer advance)
+    rotateOldFiles();
+    const callsAfterSecond = (mockFs.unlinkSync as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    expect(callsAfterSecond).toBe(callsAfterFirst); // no additional unlinkSync calls
   });
 });
